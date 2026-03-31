@@ -1,8 +1,8 @@
--- GearAdvisor: Calculator
+-- DungeonAdvisor: Calculator
 -- Scores each dungeon based on potential gear upgrades, filtered by spec.
 -- Scoring combines: number of upgrade slots + total ilvl gains + stat desirability.
 
-GearAdvisorCalc = {}
+DungeonAdvisorCalc = {}
 
 -- Scoring weights (must sum to 1.0)
 local WEIGHT_UPGRADE_COUNT = 0.40  -- how many slots have an upgrade
@@ -75,14 +75,14 @@ local DEFAULT_WEIGHTS = { crit=0.8, haste=0.8, mastery=0.8, versatility=0.8 }
 
 -- Get the stat weight table for the current player spec
 local function GetSpecWeights()
-    local className, specIndex = GearAdvisorSpecFilter:GetPlayerSpec()
+    local className, specIndex = DungeonAdvisorSpecFilter:GetPlayerSpec()
     local key = className .. "_" .. specIndex
     return STAT_WEIGHTS[key] or DEFAULT_WEIGHTS
 end
 
 -- Compute a weighted stat score for a drop (0.0 - 1.0 range)
 local function StatScore(drop, weights)
-    local stats = GearAdvisorItemCache:GetStats(drop)
+    local stats = DungeonAdvisorItemCache:GetStats(drop)
     local total = 0
     local maxPossible = 0
     for statName, weight in pairs(weights) do
@@ -102,11 +102,11 @@ end
         totalIlvlGain  - sum of max ilvl gains across upgrade slots
         upgradeDetails - list of { slot, label, itemName, currentIlvl, dropIlvl, gain, stats, fromClient }
 ]]
-function GearAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
+function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     local weights = GetSpecWeights()
 
     -- Filter to spec-usable drops first
-    local usableDrops = GearAdvisorSpecFilter:FilterDrops(dungeonDrops)
+    local usableDrops = DungeonAdvisorSpecFilter:FilterDrops(dungeonDrops)
 
     -- For each slot, find the best drop: prioritise ilvl gain, break ties by stat score
     local bestDropPerSlot = {}
@@ -135,7 +135,7 @@ function GearAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
         local gain        = drop.ilvl - currentIlvl
 
         if gain >= MIN_UPGRADE_DELTA then
-            local stats      = GearAdvisorItemCache:GetStats(drop)
+            local stats      = DungeonAdvisorItemCache:GetStats(drop)
             local statScore  = StatScore(drop, weights)
 
             upgradeCount   = upgradeCount + 1
@@ -176,18 +176,20 @@ end
     RankDungeons(playerGear)
     Returns a sorted list of dungeon results (best dungeon first).
 ]]
-function GearAdvisorCalc:RankDungeons(playerGear)
+function DungeonAdvisorCalc:RankDungeons(playerGear)
     local results = {}
-    for dungeonName, dungeonData in pairs(GearAdvisorLootDB) do
-        local score, upgradeCount, totalIlvlGain, upgradeDetails =
-            self:CalculateDungeonScore(dungeonData.drops, playerGear)
-        table.insert(results, {
-            name           = dungeonName,
-            score          = score,
-            upgradeCount   = upgradeCount,
-            totalIlvlGain  = totalIlvlGain,
-            upgradeDetails = upgradeDetails,
-        })
+    for dungeonId, dungeonData in pairs(DungeonAdvisorLootDB) do
+        if dungeonData and dungeonData.name and dungeonData.drops then
+            local score, upgradeCount, totalIlvlGain, upgradeDetails =
+                self:CalculateDungeonScore(dungeonData.drops, playerGear)
+            table.insert(results, {
+                name           = dungeonData.name,
+                score          = score,
+                upgradeCount   = upgradeCount,
+                totalIlvlGain  = totalIlvlGain,
+                upgradeDetails = upgradeDetails,
+            })
+        end
     end
     table.sort(results, function(a, b) return a.score > b.score end)
     return results

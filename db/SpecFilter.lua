@@ -1,8 +1,8 @@
--- GearAdvisor: SpecFilter
+-- DungeonAdvisor: SpecFilter
 -- Detects the player's class and active spec, then filters loot to only
 -- include items that spec can actually equip and use.
 
-GearAdvisorSpecFilter = {}
+DungeonAdvisorSpecFilter = {}
 
 -- -----------------------------------------------------------------------
 -- Armor type each class can wear
@@ -100,7 +100,7 @@ local SPEC_WEAPONS = {
 -- -----------------------------------------------------------------------
 
 -- Returns { className, specIndex, specName } for the current player
-function GearAdvisorSpecFilter:GetPlayerSpec()
+function DungeonAdvisorSpecFilter:GetPlayerSpec()
     local specIndex = GetSpecialization()
     local className = select(2, UnitClass("player")) -- e.g. "WARRIOR"
     local specName  = ""
@@ -111,7 +111,7 @@ function GearAdvisorSpecFilter:GetPlayerSpec()
 end
 
 -- Returns true if the given drop (from LootTable) is usable by the current class/spec
-function GearAdvisorSpecFilter:CanUse(drop)
+function DungeonAdvisorSpecFilter:CanUse(drop)
     local className, specIndex = self:GetPlayerSpec()
     local specKey = className .. "_" .. specIndex
 
@@ -145,7 +145,7 @@ function GearAdvisorSpecFilter:CanUse(drop)
 end
 
 -- Filters a list of drops to only those usable by the current spec
-function GearAdvisorSpecFilter:FilterDrops(drops)
+function DungeonAdvisorSpecFilter:FilterDrops(drops)
     local filtered = {}
     for _, drop in ipairs(drops) do
         if self:CanUse(drop) then

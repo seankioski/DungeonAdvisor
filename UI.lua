@@ -1,10 +1,11 @@
--- GearAdvisor: UI
+-- DungeonAdvisor: UI
 -- Renders the main advisor window
+local addonName, ns = ...
 
-GearAdvisorUI = {}
+DungeonAdvisorUI = {}
 
-local FRAME_WIDTH  = 540
-local FRAME_HEIGHT = 580
+local FRAME_WIDTH  = 740
+local FRAME_HEIGHT = 480
 local ROW_HEIGHT   = 26
 local DETAIL_COLOR = { r = 0.8, g = 0.8, b = 0.8 }
 
@@ -22,11 +23,11 @@ local function ScoreColor(score)
 end
 
 local function ScoreStars(score)
-    if score >= 75 then return "★★★★★"
-    elseif score >= 55 then return "★★★★☆"
-    elseif score >= 35 then return "★★★☆☆"
-    elseif score >= 15 then return "★★☆☆☆"
-    else return "★☆☆☆☆" end
+    if score >= 75 then return "OOOOO"
+    elseif score >= 55 then return "OOOO."
+    elseif score >= 35 then return "OOO.."
+    elseif score >= 15 then return "OO..."
+    else return "O...." end
 end
 
 -- Create a thin horizontal divider
@@ -217,11 +218,102 @@ local function BuildDungeonRows(scrollChild, results)
     scrollChild:SetHeight(math.abs(y) + 300)
 end
 
--- Create main window
-function GearAdvisorUI:Create()
+
+function DungeonAdvisorUI:RefreshDungeonList()
+    -- Ensure loot DB is loaded
+    if not DungeonAdvisorLootDB or #DungeonAdvisorLootDB == 0 then
+        print("|cff00ccff[DungeonAdvisor]|r Loot DB not loaded yet. Try reloading or waiting for login.")
+        return
+    end
+    
+    -- Ensure player gear is available (scan if needed)
+    local gear = DungeonAdvisor.playerGear or DungeonAdvisor:GetEquippedGear()
+    if not gear or next(gear) == nil then
+        print("|cff00ccff[DungeonAdvisor]|r Player gear not available. Try rescanning.")
+        return
+    end
+    
+    -- Recalculate dungeon rankings with the new selected difficulty
+    local results = DungeonAdvisorCalc:RankDungeons(gear)
+    
+    -- Debug: Check results
+    print(string.format("|cff00ccff[DungeonAdvisor]|r Refreshed dungeon list for difficulty %s: %d results", ns.state.selectedDifficulty, #results))
+    
+    BuildDungeonRows(self.scrollChild, results)
+    
+    -- Clear any existing detail panel (since the list changed)
+    for _, r in ipairs(detailRows) do r:Hide() end
+    detailRows = {}
+    if detailHeader then detailHeader:Hide() end
+end
+
+
+
+-- Difficulty buttons on the left (vertical stack)
+local difficultyButtons = {}
+
+local function UpdateDifficultyButtonHighlights()
+    for _, button in ipairs(difficultyButtons) do
+        if button.diff.id == ns.state.selectedDifficulty then
+            button.selectedTexture:Show()
+            button.text:SetTextColor(1, 1, 1)  -- White text for selected
+        else
+            button.selectedTexture:Hide()
+            button.text:SetTextColor(0.8, 0.8, 0.8)  -- Gray text for unselected
+        end
+    end
+end
+
+local function CreateDifficultyButtons(parent)
+    local yOffset = -30  -- Start below the title
+    for i, diff in ipairs(ns.DIFFICULTIES.DUNGEON) do
+        local button = CreateFrame("Button", nil, parent)
+        button:SetSize(120, 25)  -- Width matches old dropdown, height for readability
+        button:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, yOffset)
+        yOffset = yOffset - 30  -- Stack vertically with spacing
+
+        -- Button text
+        button.text = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        button.text:SetPoint("CENTER")
+        button.text:SetText(diff.fullName)
+
+        -- Background textures for normal/selected states
+        button:SetNormalTexture("Interface\\Buttons\\UI-Listbox-Highlight2")  -- Subtle background
+        button:GetNormalTexture():SetVertexColor(0.2, 0.2, 0.2, 0.5)  -- Gray when not selected
+        button:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight")  -- Highlight on hover
+        button:GetHighlightTexture():SetVertexColor(0.5, 0.5, 0.5, 1)
+
+        -- Selected state: brighter background
+        button.selectedTexture = button:CreateTexture(nil, "BACKGROUND")
+        button.selectedTexture:SetAllPoints()
+        button.selectedTexture:SetTexture("Interface\\Buttons\\UI-Listbox-Highlight2")
+        button.selectedTexture:SetVertexColor(0.4, 0.6, 1, 0.8)  -- Blue tint for selected
+        button.selectedTexture:Hide()  -- Hidden by default
+
+        -- Store difficulty data
+        button.diff = diff
+
+        -- OnClick: Select this difficulty and refresh
+        button:SetScript("OnClick", function(self)
+            ns.state.selectedDifficulty = self.diff.id
+            UpdateDifficultyButtonHighlights()  -- Update all buttons' appearance
+            DungeonAdvisorUI:RefreshDungeonList()  -- Refresh dungeon rankings
+        end)
+
+        table.insert(difficultyButtons, button)
+    end
+
+    -- Initial highlight based on current selection
+    UpdateDifficultyButtonHighlights()
+end
+
+
+
+
+function DungeonAdvisorUI:Create()
     if self.frame then return end
 
-    local f = CreateFrame("Frame", "GearAdvisorFrame", UIParent, "BasicFrameTemplateWithInset")
+    local f = CreateFrame("Frame", "DungeonAdvisorFrame", UIParent, "BasicFrameTemplateWithInset")
     f:SetSize(FRAME_WIDTH, FRAME_HEIGHT)
     f:SetPoint("CENTER")
     f:SetMovable(true)
@@ -232,30 +324,42 @@ function GearAdvisorUI:Create()
     f:SetClampedToScreen(true)
 
     -- Title
-    f.TitleText:SetText("⚔  GearAdvisor — M+ Upgrade Finder")
+    f.TitleText:SetText("⚔  DungeonAdvisor — M+ Upgrade Finder")
 
-    -- Subtitle / instruction bar
+    -- Subtitle / instruction bar (adjust position to account for sidebar)
     local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    subtitle:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -30)
+    subtitle:SetPoint("TOPLEFT", f, "TOPLEFT", 150, -30)  -- Shift right to avoid sidebar
     subtitle:SetText("|cffAAAAAAClick a dungeon for slot details  •  Hover for tooltip|r")
 
-    -- Scan button
+    -- Scan button (adjust position)
     local scanBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     scanBtn:SetSize(90, 22)
     scanBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -28, -26)
     scanBtn:SetText("Rescan Gear")
     scanBtn:SetScript("OnClick", function()
-        GearAdvisor.playerGear = GearAdvisor:GetEquippedGear()
-        GearAdvisorUI:Refresh()
+        DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear()
+        DungeonAdvisorUI:Refresh()
     end)
 
-    -- Scroll frame
-    local sf = CreateFrame("ScrollFrame", "GearAdvisorScroll", f, "UIPanelScrollFrameTemplate")
-    sf:SetPoint("TOPLEFT",  f, "TOPLEFT",  10, -54)
+    -- Sidebar for difficulty buttons (separate vertical stack)
+    local sidebar = CreateFrame("Frame", nil, f)
+    sidebar:SetSize(130, FRAME_HEIGHT - 60)  -- Width for buttons, height to fit
+    sidebar:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -30)
+    -- Optional: Add a subtle background to the sidebar
+    local sidebarBg = sidebar:CreateTexture(nil, "BACKGROUND")
+    sidebarBg:SetAllPoints()
+    sidebarBg:SetColorTexture(0.1, 0.1, 0.1, 0.3)  -- Dark background for separation
+
+    -- Add difficulty buttons to the sidebar
+    CreateDifficultyButtons(sidebar)
+
+    -- Scroll frame (positioned to the right of the sidebar)
+    local sf = CreateFrame("ScrollFrame", "DungeonAdvisorScroll", f, "UIPanelScrollFrameTemplate")
+    sf:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 10, 0)  -- Right of sidebar
     sf:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -28, 10)
 
-    local scrollChild = CreateFrame("Frame", "GearAdvisorScrollChild", sf)
-    scrollChild:SetSize(FRAME_WIDTH - 40, 800)
+    local scrollChild = CreateFrame("Frame", "DungeonAdvisorScrollChild", sf)
+    scrollChild:SetSize(FRAME_WIDTH - 180, 800)  -- Adjust width to fit new layout
     sf:SetScrollChild(scrollChild)
 
     f:Hide()
@@ -264,9 +368,9 @@ function GearAdvisorUI:Create()
     self.scrollChild = scrollChild
 end
 
-function GearAdvisorUI:Refresh()
-    local gear    = GearAdvisor.playerGear or GearAdvisor:GetEquippedGear()
-    local results = GearAdvisorCalc:RankDungeons(gear)
+function DungeonAdvisorUI:Refresh()
+    local gear    = DungeonAdvisor.playerGear or DungeonAdvisor:GetEquippedGear()
+    local results = DungeonAdvisorCalc:RankDungeons(gear)
     BuildDungeonRows(self.scrollChild, results)
     -- Clear detail panel
     for _, r in ipairs(detailRows) do r:Hide() end
@@ -274,7 +378,7 @@ function GearAdvisorUI:Refresh()
     if detailHeader then detailHeader:Hide() end
 end
 
-function GearAdvisorUI:Toggle()
+function DungeonAdvisorUI:Toggle()
     self:Create()
     if self.frame:IsShown() then
         self.frame:Hide()

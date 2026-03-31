@@ -1,11 +1,28 @@
--- GearAdvisor: Core
+local addonName, ns = ...
+
+ns.state = {
+    selectedSpecIndex = nil,
+    selectedSpecID    = nil,
+    selectedClassID   = nil,
+    selectedClassName = nil,
+    selectedClassFile = nil,
+    isViewingOtherClass = false,
+    selectedStats     = {},    -- stat keys, max 2
+    showingChart      = false,
+    vaultMode         = false,
+}
+
+-- DungeonAdvisor: Core
 -- Initializes the addon and reads character gear via WoW API
 
-GearAdvisor = {}
-GearAdvisor.version = "1.0.0"
+DungeonAdvisor = {}
+DungeonAdvisor.version = "1.0.0"
+
+-- Global loot database (populated at PLAYER_LOGIN)
+DungeonAdvisorLootDB = {}
 
 -- Slot IDs we care about (WoW inventory slot numbers)
-GearAdvisor.SLOTS = {
+DungeonAdvisor.SLOTS = {
     HEAD      = { id = 1,  label = "Head" },
     NECK      = { id = 2,  label = "Neck" },
     SHOULDER  = { id = 3,  label = "Shoulder" },
@@ -24,13 +41,44 @@ GearAdvisor.SLOTS = {
 }
 
 -- Extra ring/trinket slots
-GearAdvisor.EXTRA_SLOTS = {
+DungeonAdvisor.EXTRA_SLOTS = {
     FINGER2  = { id = 12, slot = "FINGER",  label = "Ring 2" },
     TRINKET2 = { id = 14, slot = "TRINKET", label = "Trinket 2" },
 }
 
+function ns:DetectLootSpec()
+    local className, classFile, classID = UnitClass("player")
+    ns.playerClassID   = classID
+    ns.playerClassName = className
+    ns.playerClassFile = classFile
+
+    ns.state.selectedClassID   = classID
+    ns.state.selectedClassName = className
+    ns.state.selectedClassFile = classFile
+    ns.state.isViewingOtherClass = false
+
+    -- 0 means "use current spec"
+    local lootSpecID = GetLootSpecialization()
+    if lootSpecID == 0 then
+        local currentSpec = GetSpecialization()
+        if currentSpec then
+            ns.state.selectedSpecIndex = currentSpec
+            ns.state.selectedSpecID = select(1, GetSpecializationInfo(currentSpec))
+        end
+    else
+        for i = 1, GetNumSpecializations() do
+            local specID = GetSpecializationInfo(i)
+            if specID == lootSpecID then
+                ns.state.selectedSpecIndex = i
+                ns.state.selectedSpecID = specID
+                break
+            end
+        end
+    end
+end
+
 -- Returns a table of { slotName -> currentIlvl } for the player
-function GearAdvisor:GetEquippedGear()
+function DungeonAdvisor:GetEquippedGear()
     local gear = {}
 
     for slotName, slotInfo in pairs(self.SLOTS) do
@@ -66,49 +114,86 @@ function GearAdvisor:GetEquippedGear()
     return gear
 end
 
+-- Load data (from Data.lua)
+local function InitializeLootDB()
+    local specIndex = GetSpecialization()
+    if not specIndex then
+        print("|cff00ccff[DungeonAdvisor]|r Warning: No active spec")
+        return
+    end
+
+    -- Scan all dungeons × all difficulties in one call
+    local results = ns:ScanLoot(specIndex, nil)
+    
+    if not results or #results == 0 then
+        print("|cff00ccff[DungeonAdvisor]|r Warning: No loot data returned")
+        return
+    end
+
+    DungeonAdvisorLootDB = {}
+    for _, entry in ipairs(results) do
+        print(string.format("|cff00ccff[DungeonAdvisor]|r Processing loot for %s (boss %s)...", entry.sourceName, entry.bossName))
+        DungeonAdvisorLootDB[entry.instanceID] = {
+            name = entry.sourceName,
+            bosses = {
+                {
+                    name = entry.bossName,
+                    encounterID = entry.encounterID,
+                    loot = entry.items,  -- keyed by diffID (1, 2, 23, "M+2", "M+4", etc.)
+                }
+            },
+        }
+    end
+
+    print(string.format("|cff00ccff[DungeonAdvisor]|r Loaded loot cache with %d dungeons", #results))
+end
+
 -- Event frame
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
-eventFrame:RegisterEvent("PLAYER_LOGIN")
+eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
-    if event == "ADDON_LOADED" and arg1 == "GearAdvisor" then
-        if not GearAdvisorDB then
-            GearAdvisorDB = {}
-        end
-        print("|cff00ccff[GearAdvisor]|r Loaded! Type |cffFFD700/ga|r to open.")
+    if event == "ADDON_LOADED" and arg1 == addonName then
+        DungeonAdvisorDB = DungeonAdvisorDB or {}
+        print("|cff00ccff[DungeonAdvisor]|r Loaded! Type |cffFFD700/ga|r to open.")
     end
 
-    if event == "PLAYER_LOGIN" then
+    if event == "PLAYER_ENTERING_WORLD" then
+        print("|cff00ccff[DungeonAdvisor]|r Initializing player login...")
+        -- Build loot DB first
+        InitializeLootDB()
+        
         -- Gear info becomes available after login
-        GearAdvisor.playerGear = GearAdvisor:GetEquippedGear()
-        -- Kick off item data requests so GetItemStats() has data ready
-        GearAdvisorItemCache:WarmCache()
+        DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear()
         -- Print active spec so player knows what filter is active
-        local className, specIndex, specName = GearAdvisorSpecFilter:GetPlayerSpec()
-        print(string.format("|cff00ccff[GearAdvisor]|r Filtering for |cffFFD700%s %s|r. Type |cffFFD700/ga|r to open.", specName, className))
+        local className, specIndex, specName = DungeonAdvisorSpecFilter:GetPlayerSpec()
+        print(string.format("|cff00ccff[DungeonAdvisor]|r Filtering for |cffFFD700%s %s|r. Type |cffFFD700/ga|r to open.", specName, className))
     end
 end)
 
+
+
 -- Slash command
-SLASH_GEARADVISOR1 = "/ga"
-SLASH_GEARADVISOR2 = "/gearadvisor"
-SlashCmdList["GEARADVISOR"] = function(msg)
+SLASH_DUNGEONADVISOR1 = "/da"
+SLASH_DUNGEONADVISOR2 = "/dungeonadvisor"
+SlashCmdList["DUNGEONADVISOR"] = function(msg)
     msg = msg:lower():trim()
     if msg == "scan" then
-        GearAdvisor.playerGear = GearAdvisor:GetEquippedGear()
-        print("|cff00ccff[GearAdvisor]|r Gear rescanned.")
+        ns:DetectLootSpec()
+        DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear()
+        print("|cff00ccff[DungeonAdvisor]|r Gear rescanned.")
     elseif msg == "debug" then
-        GearAdvisor:PrintGearDebug()
+        DungeonAdvisor:PrintGearDebug()
     else
-        GearAdvisorUI:Toggle()
+        DungeonAdvisorUI:Toggle()
     end
 end
 
 -- Debug helper
-function GearAdvisor:PrintGearDebug()
+function DungeonAdvisor:PrintGearDebug()
     local gear = self:GetEquippedGear()
-    print("|cff00ccff[GearAdvisor]|r Current gear:")
+    print("|cff00ccff[DungeonAdvisor]|r Current gear:")
     for slot, info in pairs(gear) do
         print(string.format("  %s: %s (ilvl %d)", info.label, info.name, info.ilvl))
     end

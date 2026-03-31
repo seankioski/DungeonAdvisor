@@ -1,13 +1,12 @@
 ## Interface: 120001, 120005, 120000
-## Title: GearAdvisor
+## Title: DungeonAdvisor
 ## Notes: Finds the best Mythic+ dungeons to run for gear upgrades
 ## Author: You
 ## Version: 1.0.0
-## SavedVariables: GearAdvisorDB
+## SavedVariables: DungeonAdvisorDB
 
-db\LootTable.lua
+Data.lua
 db\SpecFilter.lua
-db\ItemCache.lua
 Core.lua
 Calculator.lua
 UI.lua
