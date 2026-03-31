@@ -8,19 +8,19 @@ DungeonAdvisorSpecFilter = {}
 -- Armor type each class can wear
 -- -----------------------------------------------------------------------
 local CLASS_ARMOR = {
-    WARRIOR      = { PLATE=true,  MAIL=true,  LEATHER=true, CLOTH=true  },
-    PALADIN      = { PLATE=true,  MAIL=true,  LEATHER=true, CLOTH=true  },
-    DEATHKNIGHT  = { PLATE=true,  MAIL=true,  LEATHER=true, CLOTH=true  },
-    DEMONHUNTER  = {              MAIL=true,  LEATHER=true, CLOTH=true  },
-    SHAMAN       = {              MAIL=true,  LEATHER=true, CLOTH=true  },
-    HUNTER       = {              MAIL=true,  LEATHER=true, CLOTH=true  },
-    MONK         = {              MAIL=true,  LEATHER=true, CLOTH=true  },
-    DRUID        = {                          LEATHER=true, CLOTH=true  },
-    ROGUE        = {                          LEATHER=true, CLOTH=true  },
-    EVOKER       = {                          LEATHER=true, CLOTH=true  },
-    MAGE         = {                                        CLOTH=true  },
-    WARLOCK      = {                                        CLOTH=true  },
-    PRIEST       = {                                        CLOTH=true  },
+    WARRIOR      = { Plate=true,                                        },
+    PALADIN      = { Plate=true,                                        },
+    DEATHKNIGHT  = { Plate=true,                                        },
+    DEMONHUNTER  = {                          Leather=true,             },
+    SHAMAN       = {              Mail=true,                            },
+    HUNTER       = {              Mail=true,                            },
+    MONK         = {                          Leather=true,             },
+    DRUID        = {                          Leather=true,             },
+    ROGUE        = {                          Leather=true,             },
+    EVOKER       = {              Mail=true,                            },
+    MAGE         = {                                        Cloth=true  },
+    WARLOCK      = {                                        Cloth=true  },
+    PRIEST       = {                                        Cloth=true  },
 }
 
 -- -----------------------------------------------------------------------
@@ -47,11 +47,23 @@ local SPEC_WEAPONS = {
     -- DEMON HUNTER
     DEMONHUNTER_1 = { ONE_HAND=true, TWO_HAND=false,SHIELD=false, STAFF=false, BOW=false, WAND=false }, -- Havoc
     DEMONHUNTER_2 = { ONE_HAND=true, TWO_HAND=false,SHIELD=false, STAFF=false, BOW=false, WAND=false }, -- Vengeance
+    DEMONHUNTER_3 = { ONE_HAND=true, TWO_HAND=false,SHIELD=false, STAFF=false, BOW=false, WAND=false }, -- Devourer
 
     -- SHAMAN
     SHAMAN_1 = { ONE_HAND=true, TWO_HAND=true, SHIELD=true,  STAFF=true,  BOW=false, WAND=false }, -- Elemental
     SHAMAN_2 = { ONE_HAND=true, TWO_HAND=true, SHIELD=true,  STAFF=true,  BOW=false, WAND=false }, -- Enhancement
-    SHAMAN_3 = { ONE_HAND=true, TWO_HAND=true, SHIELD=true,  STAFF=true,  BOW=false, WAND=false }, -- Restoration
+    SHAMAN_3 = { --Restoration
+        ["One-Handed Axes"]=true,
+        ["One-Handed Swords"]=false,
+        ["One-Handed Maces"]=true, 
+        ["Daggers"]=true,
+        ["Fist Weapons"]=true,
+        ["Two-Handed Swords"]=false,
+        ["Two-Handed Maces"]=true,
+        ["Two-Handed Axes"]=false,
+        ["Polearms"]=false,
+        ["Staves"]=true,
+    },
 
     -- HUNTER
     HUNTER_1 = { ONE_HAND=true, TWO_HAND=true, SHIELD=false, STAFF=true,  BOW=true,  WAND=false }, -- Beast Mastery
@@ -76,7 +88,16 @@ local SPEC_WEAPONS = {
 
     -- EVOKER
     EVOKER_1 = { ONE_HAND=true, TWO_HAND=true, SHIELD=false, STAFF=true,  BOW=false, WAND=false }, -- Devastation
-    EVOKER_2 = { ONE_HAND=true, TWO_HAND=true, SHIELD=false, STAFF=true,  BOW=false, WAND=false }, -- Preservation
+    EVOKER_2 = { --Preservation
+        ["One-Handed Swords"]=true,
+        ["One-Handed Maces"]=true, 
+        ["Daggers"]=true,
+        ["Fist Weapons"]=true,
+        ["Two-Handed Swords"]=true,
+        ["Two-Handed Maces"]=true,
+        ["Polearms"]=true,
+        ["Staves"]=true,
+    },
     EVOKER_3 = { ONE_HAND=true, TWO_HAND=true, SHIELD=false, STAFF=true,  BOW=false, WAND=false }, -- Augmentation
 
     -- MAGE
@@ -116,27 +137,29 @@ function DungeonAdvisorSpecFilter:CanUse(drop)
     local specKey = className .. "_" .. specIndex
 
     -- Rings, necks, trinkets, cloaks are universal
-    local universalSlots = { FINGER=true, NECK=true, TRINKET=true, BACK=true }
+    local universalSlots = { FINGER=true, NECK=true, TRINKET=true, BACK=true, OFFHAND=true }
     if drop.slot and universalSlots[drop.slot] then
         return true
     end
 
     -- Armor check
-    if drop.armorType and drop.armorType ~= "JEWELRY" and drop.armorType ~= "CLOAK" then
+    if drop.itemType == "Armor" and drop.itemSubType and drop.itemSubType ~= "Jewelry" and drop.itemSubType ~= "Cloak" then
         local classArmor = CLASS_ARMOR[className]
-        if not classArmor or not classArmor[drop.armorType] then
+        if not classArmor or not classArmor[drop.itemSubType] then
             return false
         end
     end
 
     -- Weapon / offhand check
-    if drop.weaponType then
+    print("Checking weapon type", drop.itemType, drop.itemSubType, "for spec", specKey)
+    if drop.itemType == "Weapon" or drop.itemType == "OffHand" then
         local specWeapons = SPEC_WEAPONS[specKey]
         if not specWeapons then
             -- Unknown spec — allow everything to avoid false negatives
             return true
         end
-        if specWeapons[drop.weaponType] == false or not specWeapons[drop.weaponType] then
+        
+        if specWeapons[drop.itemSubType] == false or not specWeapons[drop.itemSubType] then
             return false
         end
     end

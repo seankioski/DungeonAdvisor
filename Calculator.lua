@@ -88,9 +88,134 @@ local function GetSpecWeights()
     return STAT_WEIGHTS[key] or DEFAULT_WEIGHTS
 end
 
+-- Handle weapons separately
+local function ScoreWeaponLoadout(drops, playerGear, weights)
+    local MAINHAND_SLOT = 16
+    local mhLink = GetInventoryItemLink("player", MAINHAND_SLOT)
+    local playerUsing2H = false
+    if mhLink then
+        local _, _, _, _, _, itemType, itemSubType = GetItemInfo(mhLink)
+        playerUsing2H = itemType == "Weapon" and (
+            itemSubType == "Two-Handed Swords" or
+            itemSubType == "Two-Handed Axes"   or
+            itemSubType == "Two-Handed Maces"  or
+            itemSubType == "Polearms"          or
+            itemSubType == "Staves"
+        )
+    end
+
+    local currentMH     = playerGear["MAINHAND"]
+    local currentOH     = playerGear["OFFHAND"]
+    local currentMHilvl = currentMH and currentMH.ilvl or 0
+    local currentOHilvl = playerUsing2H and 0 or (currentOH and currentOH.ilvl or 0)
+
+    local best2H  = nil
+    local best1H  = nil
+    local bestOH  = nil
+    local all1H   = {}
+    local allOH   = {}
+    local all2H   = {}
+
+    for _, drop in ipairs(drops) do
+        local is2H = drop.itemType == "Weapon" and (
+            drop.itemSubType == "Two-Handed Swords" or
+            drop.itemSubType == "Two-Handed Axes"   or
+            drop.itemSubType == "Two-Handed Maces"  or
+            drop.itemSubType == "Polearms"          or
+            drop.itemSubType == "Staves"
+        )
+        if is2H then
+            table.insert(all2H, drop)
+            if not best2H or drop.ilvl > best2H.ilvl then best2H = drop end
+        elseif drop.slot == "OFFHAND" then
+            table.insert(allOH, drop)
+            if not bestOH or drop.ilvl > bestOH.ilvl then bestOH = drop end
+        else
+            table.insert(all1H, drop)
+            if not best1H or drop.ilvl > best1H.ilvl then best1H = drop end
+        end
+    end
+
+    -- Determine which loadout wins for SCORING purposes only
+    local current2Hilvl = playerUsing2H and currentMHilvl or math.max(currentMHilvl, currentOHilvl)
+    local gain2H = best2H and math.max(0, best2H.ilvl - current2Hilvl) or 0
+    local gain1H = 0
+    if best1H then gain1H = gain1H + math.max(0, best1H.ilvl - currentMHilvl) end
+    if bestOH and not playerUsing2H then
+        gain1H = gain1H + math.max(0, bestOH.ilvl - currentOHilvl)
+    end
+    local score2HWins = gain2H > gain1H
+
+    local upgrades = {}
+    local scoringGain = 0
+
+    -- Always show ALL upgrades regardless of which loadout wins scoring
+    for _, drop in ipairs(all2H) do
+        local gain = drop.ilvl - math.max(currentMHilvl, currentOHilvl)
+        if gain >= MIN_UPGRADE_DELTA then
+            table.insert(upgrades, {
+                slot        = "MAINHAND",
+                label       = currentMH and currentMH.label or "Main Hand",
+                itemName    = drop.name,
+                currentIlvl = math.max(currentMHilvl, currentOHilvl),
+                dropIlvl    = drop.ilvl,
+                gain        = gain,
+                stats       = ns.GetItemStatsCompat(drop.itemLink),
+                fromClient  = true,
+            })
+        end
+    end
+
+    for _, drop in ipairs(all1H) do
+        local gain = drop.ilvl - currentMHilvl
+        if gain >= MIN_UPGRADE_DELTA then
+            table.insert(upgrades, {
+                slot        = "MAINHAND",
+                label       = currentMH and currentMH.label or "Main Hand",
+                itemName    = drop.name,
+                currentIlvl = currentMHilvl,
+                dropIlvl    = drop.ilvl,
+                gain        = gain,
+                stats       = ns.GetItemStatsCompat(drop.itemLink),
+                fromClient  = true,
+            })
+        end
+    end
+
+    for _, drop in ipairs(allOH) do
+        -- If player uses 2H, an offhand is only an upgrade if the 1H+OH
+        -- combo would beat the current 2H, so compare against 2H ilvl
+        local compareIlvl = playerUsing2H and currentMHilvl or currentOHilvl
+        local gain = drop.ilvl - compareIlvl
+        if gain >= MIN_UPGRADE_DELTA then
+            table.insert(upgrades, {
+                slot        = "OFFHAND",
+                label       = "Off Hand",
+                itemName    = drop.name,
+                currentIlvl = compareIlvl,  -- show the real comparison in UI
+                dropIlvl    = drop.ilvl,
+                gain        = gain,
+                stats       = ns.GetItemStatsCompat(drop.itemLink),
+                fromClient  = true,
+            })
+        end
+    end
+
+    -- Use only the winning loadout's gain for scoring to avoid inflating numbers
+    if score2HWins then
+        scoringGain = gain2H
+    else
+        scoringGain = gain1H
+    end
+
+    return upgrades, scoringGain
+end
+
+
 -- Compute a weighted stat score for a drop (0.0 - 1.0 range)
 local function StatScore(drop, weights)
     local stats = ns.GetItemStatsCompat(drop.itemLink)
+    if not stats then return 0 end
     local total = 0
     local maxPossible = 0
     
@@ -128,9 +253,19 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     -- Filter to spec-usable drops first
     local usableDrops = DungeonAdvisorSpecFilter:FilterDrops(dungeonDrops)
 
+    local weaponDrops = {}
+    local armorDrops  = {}
+    for _, drop in ipairs(usableDrops) do
+        if drop.slot == "MAINHAND" or drop.slot == "OFFHAND" then
+            table.insert(weaponDrops, drop)
+        else
+            table.insert(armorDrops, drop)
+        end
+    end
+
     -- For each slot, find the best drops (up to the max count for that slot)
     local bestDropsPerSlot = {}
-    for _, drop in ipairs(usableDrops) do
+    for _, drop in ipairs(armorDrops) do
         local slot = drop.slot
         local maxCount = MULTI_SLOTS[slot] or 1
         if not bestDropsPerSlot[slot] then
@@ -201,6 +336,14 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
             end
         end
     end
+
+    local weaponUpgrades, weaponScoringGain = ScoreWeaponLoadout(weaponDrops, playerGear, weights)
+    for _, wu in ipairs(weaponUpgrades) do
+        upgradeCount  = upgradeCount + 1  -- count each visible upgrade
+        totalStatScore = totalStatScore + StatScore({ itemLink = wu.itemLink }, weights)
+        table.insert(upgradeDetails, wu)
+    end
+    totalIlvlGain = totalIlvlGain + weaponScoringGain  -- but only score the best loadout
 
     -- Normalize
     local maxSlots    = 15
@@ -276,8 +419,8 @@ function DungeonAdvisorCalc:RankDungeons(playerGear)
                             ilvl       = itemLevel,
                             itemID     = item.itemID,
                             itemLink   = itemLink or item.itemLink,
-                            armorType  = itemType,
-                            weaponType = itemSubType,
+                            itemType  = itemType,
+                            itemSubType = itemSubType,
                         })
                     end
                 end

@@ -4,8 +4,8 @@ local addonName, ns = ...
 
 DungeonAdvisorUI = {}
 
-local FRAME_WIDTH  = 740
-local FRAME_HEIGHT = 480
+local FRAME_WIDTH  = 780
+local FRAME_HEIGHT = 380
 local ROW_HEIGHT   = 26
 local DETAIL_COLOR = { r = 0.8, g = 0.8, b = 0.8 }
 
@@ -20,6 +20,19 @@ local function ScoreColor(score)
     else
         return 0.8, 0.2, 0.2        -- red
     end
+end
+
+-- Helper to attach a tooltip to a FontString via an invisible frame
+local function AttachHeaderTooltip(fontString, parent, title, body)
+    local tip = CreateFrame("Frame", nil, parent)
+    tip:SetAllPoints(fontString)
+    tip:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:AddLine(title, 1, 0.82, 0)
+        GameTooltip:AddLine(body, 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    tip:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
 -- Create a thin horizontal divider
@@ -60,9 +73,8 @@ local function AttachTooltip(frame, dungeonResult)
                 if s["ITEM_MOD_HASTE_RATING_SHORT"] then table.insert(statParts, string.format("|cffFFD700Haste %d|r", s["ITEM_MOD_HASTE_RATING_SHORT"])) end
                 if s["ITEM_MOD_MASTERY_RATING_SHORT"] then table.insert(statParts, string.format("|cff44aaFFMastery %d|r", s["ITEM_MOD_MASTERY_RATING_SHORT"])) end
                 if s["ITEM_MOD_VERSATILITY"] then table.insert(statParts, string.format("|cff44ff88Vers %d|r", s["ITEM_MOD_VERSATILITY"])) end
-                local sourceTag = detail.fromClient and "|cff888888(live)|r" or "|cff666666(est.)|r"
                 if #statParts > 0 then
-                    GameTooltip:AddLine("     " .. table.concat(statParts, "  ") .. "  " .. sourceTag)
+                    GameTooltip:AddLine("     " .. table.concat(statParts, "  "))
                 end
             end
             shown = shown + 1
@@ -160,21 +172,33 @@ local function BuildDungeonRows(scrollChild, results)
     headerName:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 40, headerY)
     headerName:SetText("Dungeon")
     headerName:SetTextColor(1, 1, 1)
+    AttachHeaderTooltip(headerName, scrollChild,
+        "Dungeon",
+        "The name of the Mythic+ dungeon, ranked by overall upgrade score.")
 
     local headerEff = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     headerEff:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 280, headerY)
     headerEff:SetText("Efficiency")
     headerEff:SetTextColor(1, 1, 1)
+    AttachHeaderTooltip(headerEff, scrollChild,
+        "Efficiency",
+        "Efficiency factor for obtaining upgrades. Higher is better.\nFactors in:\n- ilvl upgrades\n- secondary stat weights\n- item track upgrades")
 
     local headerDrops = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     headerDrops:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 370, headerY)
     headerDrops:SetText("% Upgrades")
     headerDrops:SetTextColor(1, 1, 1)
+    AttachHeaderTooltip(headerDrops, scrollChild,
+        "% Upgrades",
+        "How many of this dungeon's drops are an upgrade for you.\n(Upgrades / Total drops).")
 
     local headerInfo = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     headerInfo:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -8, headerY)
     headerInfo:SetText("Upgrades / iLvl")
     headerInfo:SetTextColor(1, 1, 1)
+    AttachHeaderTooltip(headerInfo, scrollChild,
+        "Upgrades / iLvl",
+        "Number of upgrade slots found in this dungeon, and the total cumulative ilvl gain across all of them.")
 
     local y = headerY - 20
     for i, result in ipairs(results) do
@@ -241,7 +265,7 @@ local function BuildDungeonRows(scrollChild, results)
         else
             pctColor = "|cffff4444"
         end
-        dropsText:SetText("(" .. result.upgradeCount .. "/" .. result.dropCount .. ") " .. pctColor .. upgradePct .. "%|r |cffaaaaaa upgrades|r")
+        dropsText:SetText("(" .. result.upgradeCount .. "/" .. result.dropCount .. ") " .. pctColor .. upgradePct .. "%|r")
 
         -- Info: upgrades + ilvl
         local info = bg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -268,6 +292,7 @@ local function BuildDungeonRows(scrollChild, results)
             CreateDivider(scrollChild, y + 2)
         end
     end
+
 
     -- Set scroll child height to fit all rows + detail panel space
     scrollChild:SetHeight(math.abs(y) + 300)
@@ -369,6 +394,7 @@ function DungeonAdvisorUI:Create()
     if self.frame then return end
 
     local f = CreateFrame("Frame", "DungeonAdvisorFrame", UIParent, "BasicFrameTemplateWithInset")
+    f:SetFrameStrata("HIGH")
     f:SetSize(FRAME_WIDTH, FRAME_HEIGHT)
     f:SetPoint("CENTER")
     f:SetMovable(true)
@@ -385,6 +411,11 @@ function DungeonAdvisorUI:Create()
     local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     subtitle:SetPoint("TOPLEFT", f, "TOPLEFT", 150, -30)  -- Shift right to avoid sidebar
     subtitle:SetText("|cffAAAAAAClick a dungeon for slot details  •  Hover for tooltip|r")
+
+    -- Subtitle / instruction bar (adjust position to account for sidebar)
+    local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    subtitle:SetPoint("BOTTOM", f, "BOTTOM", 0, 10)  -- Shift right to avoid sidebar
+    subtitle:SetText("|cffAAAAAAAt the end of a dungeon 2/5 players will get a loot drop|r")
 
     -- Scan button (adjust position)
     local scanBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")

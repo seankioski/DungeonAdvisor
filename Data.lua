@@ -52,6 +52,7 @@ end
 
 -- C_Item.GetItemStats replaced global GetItemStats in modern WoW
 local function GetItemStatsCompat(itemLink)
+    if not itemLink then return nil end  
     if C_Item and C_Item.GetItemStats then
         return C_Item.GetItemStats(itemLink)
     elseif _G.GetItemStats then
@@ -457,6 +458,7 @@ local function ScanSourceType(results, instances, sourceType, difficulties, clas
                             if diff.vaultBonusID then
                                 vaultLink = BuildItemLinkWithBonuses(item.itemID, diff.vaultBonusID)
                             end
+                            print("Built M+ link for", item.name, "lootLink:", lootLink, "vaultLink:", vaultLink, "diff:", diff.name)
                             table.insert(mpItems, {
                                 name          = item.name,
                                 icon          = item.icon,

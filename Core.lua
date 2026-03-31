@@ -1,12 +1,10 @@
 --TODO
---add note that dungeon drop loot for you only 2/5 of the time
 --add stat weights filters and options and stuff
 --add filter for champ vs hero upgrades
 -- add filter for tier set slot track upgrades
 --trinket info not showing
---frame strate too low?
---make wider?
---tooltips over things for more info, escpecially headers
+-- update all classes weapon usability table
+-- make sure bows, guns, wands, shields are all handled and shown
 
 local addonName, ns = ...
 
