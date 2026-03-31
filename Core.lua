@@ -10,6 +10,7 @@ ns.state = {
     selectedStats     = {},    -- stat keys, max 2
     showingChart      = false,
     vaultMode         = false,
+    selectedDifficulty = "M+10",  -- Default difficulty
 }
 
 -- DungeonAdvisor: Core
@@ -42,7 +43,7 @@ DungeonAdvisor.SLOTS = {
 
 -- Extra ring/trinket slots
 DungeonAdvisor.EXTRA_SLOTS = {
-    FINGER2  = { id = 12, slot = "FINGER",  label = "Ring 2" },
+    FINGER2  = { id = 12, slot = "FINGER", label = "Ring 2" },
     TRINKET2 = { id = 14, slot = "TRINKET", label = "Trinket 2" },
 }
 
@@ -83,31 +84,35 @@ function DungeonAdvisor:GetEquippedGear()
 
     for slotName, slotInfo in pairs(self.SLOTS) do
         local itemLink = GetInventoryItemLink("player", slotInfo.id)
+        -- Rename base finger/trinket to FINGER1/TRINKET1 for consistency
+        local key = slotName
+        if slotName == "FINGER" then key = "FINGER1" end
+        if slotName == "TRINKET" then key = "TRINKET1" end
+
         if itemLink then
             local ilvl = select(4, GetItemInfo(itemLink)) or 0
-            gear[slotName] = {
+            gear[key] = {
                 ilvl  = ilvl,
                 name  = GetItemInfo(itemLink) or "Unknown",
                 label = slotInfo.label,
             }
         else
-            gear[slotName] = { ilvl = 0, name = "Empty", label = slotInfo.label }
+            gear[key] = { ilvl = 0, name = "Empty", label = slotInfo.label }
         end
     end
 
-    -- Handle second ring and trinket (use the lower of the two for each slot)
+    -- Store second ring and trinket as their own entries
     for extraName, extraInfo in pairs(self.EXTRA_SLOTS) do
         local itemLink = GetInventoryItemLink("player", extraInfo.id)
-        local ilvl = 0
-        local name = "Empty"
         if itemLink then
-            ilvl = select(4, GetItemInfo(itemLink)) or 0
-            name = GetItemInfo(itemLink) or "Unknown"
-        end
-        local slotName = extraInfo.slot
-        -- If this second slot is lower ilvl than the first, use it for upgrade comparison
-        if gear[slotName] and ilvl < gear[slotName].ilvl then
-            gear[slotName] = { ilvl = ilvl, name = name, label = extraInfo.label }
+            local ilvl = select(4, GetItemInfo(itemLink)) or 0
+            gear[extraName] = {
+                ilvl  = ilvl,
+                name  = GetItemInfo(itemLink) or "Unknown",
+                label = extraInfo.label,
+            }
+        else
+            gear[extraName] = { ilvl = 0, name = "Empty", label = extraInfo.label }
         end
     end
 
@@ -130,22 +135,9 @@ local function InitializeLootDB()
         return
     end
 
-    DungeonAdvisorLootDB = {}
-    for _, entry in ipairs(results) do
-        print(string.format("|cff00ccff[DungeonAdvisor]|r Processing loot for %s (boss %s)...", entry.sourceName, entry.bossName))
-        DungeonAdvisorLootDB[entry.instanceID] = {
-            name = entry.sourceName,
-            bosses = {
-                {
-                    name = entry.bossName,
-                    encounterID = entry.encounterID,
-                    loot = entry.items,  -- keyed by diffID (1, 2, 23, "M+2", "M+4", etc.)
-                }
-            },
-        }
-    end
+    DungeonAdvisorLootDB = results
 
-    print(string.format("|cff00ccff[DungeonAdvisor]|r Loaded loot cache with %d dungeons", #results))
+    print(string.format("|cff00ccff[DungeonAdvisor]|r Loaded loot cache"))
 end
 
 -- Event frame
@@ -156,7 +148,7 @@ eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
         DungeonAdvisorDB = DungeonAdvisorDB or {}
-        print("|cff00ccff[DungeonAdvisor]|r Loaded! Type |cffFFD700/ga|r to open.")
+        print("|cff00ccff[DungeonAdvisor]|r Loaded! Type |cffFFD700/da|r to open.")
     end
 
     if event == "PLAYER_ENTERING_WORLD" then
@@ -168,7 +160,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear()
         -- Print active spec so player knows what filter is active
         local className, specIndex, specName = DungeonAdvisorSpecFilter:GetPlayerSpec()
-        print(string.format("|cff00ccff[DungeonAdvisor]|r Filtering for |cffFFD700%s %s|r. Type |cffFFD700/ga|r to open.", specName, className))
+        print(string.format("|cff00ccff[DungeonAdvisor]|r Filtering for |cffFFD700%s %s|r. Type |cffFFD700/da|r to open.", specName, className))
     end
 end)
 

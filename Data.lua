@@ -63,6 +63,8 @@ local function GetItemStatsCompat(itemLink)
     return nil
 end
 
+ns.GetItemStatsCompat = GetItemStatsCompat
+
 local function EJ_GetLootInfoByIndexCompat(index)
     if CEJ.GetLootInfoByIndex then
         return CEJ.GetLootInfoByIndex(index)
@@ -83,6 +85,13 @@ ns.DIFF_COLORS = {
     PURPLE = { r = 0.64, g = 0.21, b = 0.93 },
     ORANGE = { r = 1.00, g = 0.50, b = 0.00 },
 }
+
+function ns:GetDifficultyByID(dungeonDiff)
+    for _, diff in ipairs(ns.DIFFICULTIES.DUNGEON) do
+        print(diff.id, dungeonDiff)
+        if diff.id == dungeonDiff then return diff end
+    end
+end
 
 ns.DIFFICULTIES = {
     DUNGEON = {

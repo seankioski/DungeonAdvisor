@@ -22,14 +22,6 @@ local function ScoreColor(score)
     end
 end
 
-local function ScoreStars(score)
-    if score >= 75 then return "OOOOO"
-    elseif score >= 55 then return "OOOO."
-    elseif score >= 35 then return "OOO.."
-    elseif score >= 15 then return "OO..."
-    else return "O...." end
-end
-
 -- Create a thin horizontal divider
 local function CreateDivider(parent, yOffset)
     local line = parent:CreateTexture(nil, "ARTWORK")
@@ -64,10 +56,10 @@ local function AttachTooltip(frame, dungeonResult)
             if detail.stats then
                 local s = detail.stats
                 local statParts = {}
-                if s.crit        > 0 then table.insert(statParts, string.format("|cffff4444Crit %d|r", s.crit)) end
-                if s.haste       > 0 then table.insert(statParts, string.format("|cffFFD700Haste %d|r", s.haste)) end
-                if s.mastery     > 0 then table.insert(statParts, string.format("|cff44aaFFMastery %d|r", s.mastery)) end
-                if s.versatility > 0 then table.insert(statParts, string.format("|cff44ff88Vers %d|r", s.versatility)) end
+                if s["ITEM_MOD_CRIT_RATING_SHORT"] then table.insert(statParts, string.format("|cffff4444Crit %d|r", s["ITEM_MOD_CRIT_RATING_SHORT"])) end
+                if s["ITEM_MOD_HASTE_RATING_SHORT"] then table.insert(statParts, string.format("|cffFFD700Haste %d|r", s["ITEM_MOD_HASTE_RATING_SHORT"])) end
+                if s["ITEM_MOD_MASTERY_RATING_SHORT"] then table.insert(statParts, string.format("|cff44aaFFMastery %d|r", s["ITEM_MOD_MASTERY_RATING_SHORT"])) end
+                if s["ITEM_MOD_VERSATILITY"] then table.insert(statParts, string.format("|cff44ff88Vers %d|r", s["ITEM_MOD_VERSATILITY"])) end
                 local sourceTag = detail.fromClient and "|cff888888(live)|r" or "|cff666666(est.)|r"
                 if #statParts > 0 then
                     GameTooltip:AddLine("     " .. table.concat(statParts, "  ") .. "  " .. sourceTag)
@@ -118,10 +110,10 @@ local function RenderDetailPanel(scrollChild, dungeonResult, yStart)
         if detail.stats then
             local s = detail.stats
             local statParts = {}
-            if s.crit        > 0 then table.insert(statParts, string.format("|cffff4444Crit %d|r",      s.crit)) end
-            if s.haste       > 0 then table.insert(statParts, string.format("|cffFFD700Haste %d|r",     s.haste)) end
-            if s.mastery     > 0 then table.insert(statParts, string.format("|cff44aaFFMastery %d|r",   s.mastery)) end
-            if s.versatility > 0 then table.insert(statParts, string.format("|cff44ff88Vers %d|r",      s.versatility)) end
+            if s["ITEM_MOD_CRIT_RATING_SHORT"] then table.insert(statParts, string.format("|cffff4444Crit %d|r",      s["ITEM_MOD_CRIT_RATING_SHORT"])) end
+            if s["ITEM_MOD_HASTE_RATING_SHORT"] then table.insert(statParts, string.format("|cffFFD700Haste %d|r",     s["ITEM_MOD_HASTE_RATING_SHORT"])) end
+            if s["ITEM_MOD_MASTERY_RATING_SHORT"] then table.insert(statParts, string.format("|cff44aaFFMastery %d|r",   s["ITEM_MOD_MASTERY_RATING_SHORT"])) end
+            if s["ITEM_MOD_VERSATILITY"] then table.insert(statParts, string.format("|cff44ff88Vers %d|r",      s["ITEM_MOD_VERSATILITY"])) end
             local sourceTag = detail.fromClient and "|cff888888 (live stats)|r" or "|cff555555 (estimated)|r"
             if #statParts > 0 then
                 local statRow = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -152,10 +144,42 @@ local function BuildDungeonRows(scrollChild, results)
     end
     dungeonRows = {}
 
-    local y = -10
+    -- Efficiency gradient range
+    local minEff = math.huge
+    local maxEff = 0
+    for _, result in ipairs(results) do
+        local eff = result.efficiency or 0
+        if eff < minEff then minEff = eff end
+        if eff > maxEff then maxEff = eff end
+    end
+    if minEff == math.huge then minEff = 0 end
+    if maxEff == 0 then maxEff = 1 end
+
+    local headerY = -30
+    local headerName = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    headerName:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 40, headerY)
+    headerName:SetText("Dungeon")
+    headerName:SetTextColor(1, 1, 1)
+
+    local headerEff = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    headerEff:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 280, headerY)
+    headerEff:SetText("Efficiency")
+    headerEff:SetTextColor(1, 1, 1)
+
+    local headerDrops = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    headerDrops:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 370, headerY)
+    headerDrops:SetText("% Upgrades")
+    headerDrops:SetTextColor(1, 1, 1)
+
+    local headerInfo = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    headerInfo:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -8, headerY)
+    headerInfo:SetText("Upgrades / iLvl")
+    headerInfo:SetTextColor(1, 1, 1)
+
+    local y = headerY - 20
     for i, result in ipairs(results) do
         local r, g, b = ScoreColor(result.score)
-        local stars    = ScoreStars(result.score)
+        -- local stars    = ScoreStars(result.score)
 
         -- Clickable highlight background
         local bg = CreateFrame("Button", nil, scrollChild)
@@ -180,14 +204,44 @@ local function BuildDungeonRows(scrollChild, results)
         label:SetPoint("LEFT", rankText, "RIGHT", 4, 0)
         label:SetWidth(230)
         label:SetJustifyH("LEFT")
-        label:SetTextColor(r, g, b)
+        label:SetTextColor(1, 1, 1)  -- always white
         label:SetText(result.name)
 
-        -- Stars
-        local starsFS = bg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        starsFS:SetPoint("LEFT", label, "RIGHT", 8, 0)
-        starsFS:SetTextColor(r, g, b)
-        starsFS:SetText(stars)
+        -- Efficiency label (replacing stars)
+        local eff = result.efficiency or 0
+        local effNorm = (eff - minEff) / (maxEff - minEff)
+        if effNorm < 0 then effNorm = 0 end
+        if effNorm > 1 then effNorm = 1 end
+        local effR = 1 - effNorm
+        local effG = effNorm
+        local effB = 0
+        local effColor = string.format("|cff%02x%02x%02x", math.floor(effR * 255), math.floor(effG * 255), math.floor(effB * 255))
+        local effStr     = string.format("%.2f", eff)
+        local efficiencyText = bg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        efficiencyText:SetPoint("LEFT", label, "RIGHT", 8, 0)
+        efficiencyText:SetTextColor(1, 1, 1)
+        efficiencyText:SetText(effColor .. effStr .. "|r")
+
+        -- Drop count
+        local upgradePct = result.dropCount > 0 
+            and math.floor((result.upgradeCount / result.dropCount) * 100) 
+            or 0
+
+        local dropsText = bg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        dropsText:SetPoint("LEFT", bg, "LEFT", 370, 0)
+        dropsText:SetWidth(80)
+        dropsText:SetJustifyH("LEFT")
+
+        -- Color the percentage: green if high, yellow if mid, red if low
+        local pctColor
+        if upgradePct >= 50 then
+            pctColor = "|cff00ff00"
+        elseif upgradePct >= 25 then
+            pctColor = "|cffFFD700"
+        else
+            pctColor = "|cffff4444"
+        end
+        dropsText:SetText("(" .. result.upgradeCount .. "/" .. result.dropCount .. ") " .. pctColor .. upgradePct .. "%|r |cffaaaaaa upgrades|r")
 
         -- Info: upgrades + ilvl
         local info = bg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -195,7 +249,8 @@ local function BuildDungeonRows(scrollChild, results)
         info:SetJustifyH("RIGHT")
         local upgradeStr = result.upgradeCount .. " slot" .. (result.upgradeCount == 1 and "" or "s")
         local gainStr    = "+" .. result.totalIlvlGain .. " ilvl"
-        info:SetText("|cff00ff00" .. upgradeStr .. "|r  |cffaaddff" .. gainStr .. "|r")
+
+        info:SetText("|cff00ff00" .. upgradeStr .. "|r  |cffaaddff" .. gainStr .. "|r ")
 
         AttachTooltip(bg, result)
 
