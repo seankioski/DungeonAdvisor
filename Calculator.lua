@@ -81,10 +81,14 @@ local MULTI_SLOTS = {
     TRINKET = 2,
 }
 
+local MULTI_SLOT_LABELS = {
+    FINGER  = "Ring",
+    TRINKET = "Trinket",
+}
+
 -- Get the stat weight table for the current player spec
 local function GetSpecWeights()
-    local className, specIndex = DungeonAdvisorSpecFilter:GetPlayerSpec()
-    local key = className .. "_" .. specIndex
+    local key = ns.state.selectedSpecID .. "_" .. ns.state.selectedSpecIndex
     return STAT_WEIGHTS[key] or DEFAULT_WEIGHTS
 end
 
@@ -249,7 +253,6 @@ end
 ]]
 function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     local weights = GetSpecWeights()
-    local usableDrops = DungeonAdvisorSpecFilter:FilterDrops(dungeonDrops)
 
     -- Shared cache for stat scores within this scoring pass
     local scoreCache = {}
@@ -263,7 +266,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
 
     local weaponDrops = {}
     local armorDrops  = {}
-    for _, drop in ipairs(usableDrops) do
+    for _, drop in ipairs(dungeonDrops) do
         if drop.slot == "MAINHAND" or drop.slot == "OFFHAND" then
             table.insert(weaponDrops, drop)
         else
@@ -297,11 +300,25 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     local totalStatScore = 0
     local upgradeDetails = {}
 
-    for slot, drops in pairs(bestDropsPerSlot) do
+    -- Group all drops by slot (no trimming here)
+    local dropsBySlot = {}
+    for _, drop in ipairs(armorDrops) do
+        local slot = drop.slot
+        if not dropsBySlot[slot] then
+            dropsBySlot[slot] = {}
+        end
+        table.insert(dropsBySlot[slot], drop)
+        -- Keep sorted descending by ilvl, break ties by stat score
+        table.sort(dropsBySlot[slot], function(a, b)
+            if a.ilvl ~= b.ilvl then return a.ilvl > b.ilvl end
+            return CachedStatScore(a) > CachedStatScore(b)
+        end)
+    end
+
+    for slot, drops in pairs(dropsBySlot) do
         local maxCount = MULTI_SLOTS[slot] or 1
 
-        -- Build a list of current gear for this slot type, sorted worst-first
-        -- so we greedily assign each drop upgrade to the weakest current piece
+        -- Build current equipped pieces for this slot, sorted weakest first
         local currentPieces = {}
         for i = 1, maxCount do
             local gearKey = maxCount > 1 and (slot .. i) or slot
@@ -312,28 +329,67 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                 label = current and current.label or gearKey,
             })
         end
-        -- Sort ascending so index 1 = weakest equipped piece
         table.sort(currentPieces, function(a, b) return a.ilvl < b.ilvl end)
 
-        for dropIdx, drop in ipairs(drops) do
-            -- Match each drop against the weakest remaining slot
-            local current = currentPieces[dropIdx]
-            if not current then break end
+        local weakestIlvl  = currentPieces[1].ilvl
+        local strongestIlvl = currentPieces[maxCount].ilvl
 
-            local gain = drop.ilvl - current.ilvl
-            if gain >= MIN_UPGRADE_DELTA then
-                local stats     = ns.GetItemStatsCompat(drop.itemLink)
-                local statScore = CachedStatScore(drop)
+        -- SCORING: count every drop that upgrades any equipped piece,
+        -- but only sum ilvl gain for the best maxCount assignments to avoid inflation
+        local usedDrops = {}
+        local usedSlots = {}
 
-                upgradeCount   = upgradeCount + 1
-                totalIlvlGain  = totalIlvlGain + gain
-                totalStatScore = totalStatScore + statScore
+        -- First pass: greedy assignment for ilvl gain scoring (capped at maxCount)
+        for _, current in ipairs(currentPieces) do
+            for dropIdx, drop in ipairs(drops) do
+                if not usedDrops[dropIdx] then
+                    local gain = drop.ilvl - current.ilvl
+                    if gain >= MIN_UPGRADE_DELTA then
+                        local statScore = CachedStatScore(drop)
+                        totalIlvlGain  = totalIlvlGain + gain
+                        totalStatScore = totalStatScore + statScore
+                        usedDrops[dropIdx] = true
+                        usedSlots[current.key] = true
+                    end
+                    break
+                end
+            end
+        end
 
+        -- Second pass: count ALL drops that beat any equipped piece
+        for _, drop in ipairs(drops) do
+            for _, current in ipairs(currentPieces) do
+                if drop.ilvl - current.ilvl >= MIN_UPGRADE_DELTA then
+                    upgradeCount = upgradeCount + 1
+                    break  -- count each drop once even if it beats both slots
+                end
+            end
+        end
+
+        -- DISPLAY: show every drop that is an upgrade over any equipped piece
+        for _, drop in ipairs(drops) do
+            -- Find the best slot this drop would upgrade (weakest piece it beats)
+            local bestCurrent = nil
+            for _, current in ipairs(currentPieces) do
+                local gain = drop.ilvl - current.ilvl
+                if gain >= MIN_UPGRADE_DELTA then
+                    -- Prefer showing it replacing the weakest piece it upgrades
+                    if not bestCurrent or current.ilvl < bestCurrent.ilvl then
+                        bestCurrent = current
+                    end
+                end
+            end
+
+            if bestCurrent then
+                local gain  = drop.ilvl - bestCurrent.ilvl
+                local stats = ns.GetItemStatsCompat(drop.itemLink)
+                -- For multi-slots (rings/trinkets), show generic label instead of "Trinket 1"/"Ring 1"
+                local displayLabel = MULTI_SLOT_LABELS[slot] or bestCurrent.label
                 table.insert(upgradeDetails, {
-                    slot        = current.key,
-                    label       = current.label,
+                    slot        = bestCurrent.key,
+                    label       = displayLabel,
                     itemName    = drop.name,
-                    currentIlvl = current.ilvl,
+                    currentIlvl = bestCurrent.ilvl,
                     dropIlvl    = drop.ilvl,
                     gain        = gain,
                     stats       = stats,

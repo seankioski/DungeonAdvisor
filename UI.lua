@@ -4,7 +4,7 @@ local addonName, ns = ...
 
 DungeonAdvisorUI = {}
 
-local FRAME_WIDTH  = 780
+local FRAME_WIDTH  = 800
 local FRAME_HEIGHT = 380
 local ROW_HEIGHT   = 26
 local DETAIL_COLOR = { r = 0.8, g = 0.8, b = 0.8 }
@@ -244,7 +244,7 @@ local function BuildDungeonRows(scrollChild, results)
         -- Dungeon name
         local label = bg:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         label:SetPoint("LEFT", rankText, "RIGHT", 4, 0)
-        label:SetWidth(230)
+        label:SetWidth(220)
         label:SetJustifyH("LEFT")
         label:SetTextColor(1, 1, 1)  -- always white
         label:SetText(result.name)
@@ -270,8 +270,8 @@ local function BuildDungeonRows(scrollChild, results)
             or 0
 
         local dropsText = bg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        dropsText:SetPoint("LEFT", bg, "LEFT", 370, 0)
-        dropsText:SetWidth(80)
+        dropsText:SetPoint("LEFT", bg, "LEFT", 350, 0)
+        dropsText:SetWidth(90)
         dropsText:SetJustifyH("LEFT")
 
         -- Color the percentage: green if high, yellow if mid, red if low
@@ -283,7 +283,7 @@ local function BuildDungeonRows(scrollChild, results)
         else
             pctColor = "|cffff4444"
         end
-        dropsText:SetText("(" .. result.upgradeCount .. "/" .. result.dropCount .. ") " .. pctColor .. upgradePct .. "%|r")
+        dropsText:SetText(pctColor .. upgradePct .. "%|r" .. " (" .. result.upgradeCount .. "/" .. result.dropCount .. ") ")
 
         -- Info: upgrades + ilvl
         local info = bg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -313,7 +313,7 @@ local function BuildDungeonRows(scrollChild, results)
 
 
     -- Set scroll child height to fit all rows + detail panel space
-    scrollChild:SetHeight(math.abs(y) + 300)
+    scrollChild:SetHeight(math.abs(y) + 0)
 end
 
 
@@ -407,7 +407,7 @@ function DungeonAdvisorUI:Create()
     f:SetClampedToScreen(true)
 
     -- Title
-    f.TitleText:SetText("⚔  DungeonAdvisor — M+ Upgrade Finder")
+    f.TitleText:SetText("DungeonAdvisor — M+ Upgrade Finder")
 
     -- Subtitle / instruction bar (adjust position to account for sidebar)
     local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")

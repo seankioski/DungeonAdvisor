@@ -13,6 +13,7 @@ ns.state = {
     selectedClassID   = nil,
     selectedClassName = nil,
     selectedClassFile = nil,
+    selectedSpecName  = nil,
     isViewingOtherClass = false,
     selectedStats     = {},    -- stat keys, max 2
     showingChart      = false,
@@ -83,6 +84,10 @@ function ns:DetectLootSpec()
             end
         end
     end
+
+    ns.state.selectedSpecName = select(2, GetSpecializationInfo(ns.state.selectedSpecID))
+
+    --print(string.format("|cff00ccff[DungeonAdvisor]|r Detected loot spec |cffFFD700%s %s|r.", ns.state.selectedSpecName, className))
 end
 
 -- Returns a table of { slotName -> currentIlvl } for the player
@@ -162,12 +167,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         print("|cff00ccff[DungeonAdvisor]|r Initializing player login...")
         -- Build loot DB first
         InitializeLootDB()
-        
-        -- Gear info becomes available after login
-        DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear()
-        -- Print active spec so player knows what filter is active
-        local className, specIndex, specName = DungeonAdvisorSpecFilter:GetPlayerSpec()
-        print(string.format("|cff00ccff[DungeonAdvisor]|r Filtering for |cffFFD700%s %s|r. Type |cffFFD700/da|r to open.", specName, className))
+        DungeonAdvisorUI:Refresh()
     end
 end)
 
