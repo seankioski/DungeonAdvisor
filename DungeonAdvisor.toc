@@ -6,7 +6,7 @@
 ## SavedVariables: DungeonAdvisorDB
 
 Data.lua
-db\SpecFilter.lua
+SpecFilter.lua
 Core.lua
 Calculator.lua
 UI.lua

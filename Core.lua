@@ -1,8 +1,7 @@
 --TODO
---add stat weights filters and options and stuff
 --add filter for champ vs hero upgrades
 -- add filter for tier set slot track upgrades
---trinket info not showing
+-- trinket info not showing
 -- update all classes weapon usability table
 -- make sure bows, guns, wands, shields are all handled and shown
 

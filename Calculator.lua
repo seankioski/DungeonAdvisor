@@ -249,9 +249,17 @@ end
 ]]
 function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     local weights = GetSpecWeights()
-
-    -- Filter to spec-usable drops first
     local usableDrops = DungeonAdvisorSpecFilter:FilterDrops(dungeonDrops)
+
+    -- Shared cache for stat scores within this scoring pass
+    local scoreCache = {}
+    local function CachedStatScore(drop)
+        local key = drop.itemLink or drop.name or tostring(drop)
+        if not scoreCache[key] then
+            scoreCache[key] = StatScore(drop, weights)
+        end
+        return scoreCache[key]
+    end
 
     local weaponDrops = {}
     local armorDrops  = {}
@@ -275,10 +283,8 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
         table.insert(list, drop)
         -- Sort descending by ilvl, then stat score on tie
         table.sort(list, function(a, b)
-            local sa = StatScore(a, weights)
-            local sb = StatScore(b, weights)
             if a.ilvl ~= b.ilvl then return a.ilvl > b.ilvl end
-            return sa > sb
+            return CachedStatScore(a) > CachedStatScore(b)
         end)
         -- Trim to max allowed
         while #list > maxCount do
@@ -317,7 +323,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
             local gain = drop.ilvl - current.ilvl
             if gain >= MIN_UPGRADE_DELTA then
                 local stats     = ns.GetItemStatsCompat(drop.itemLink)
-                local statScore = StatScore(drop, weights)
+                local statScore = CachedStatScore(drop)
 
                 upgradeCount   = upgradeCount + 1
                 totalIlvlGain  = totalIlvlGain + gain
@@ -359,14 +365,21 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     -- Sort upgrades: biggest ilvl gain first
     table.sort(upgradeDetails, function(a, b) return a.gain > b.gain end)
 
-    return score, upgradeCount, totalIlvlGain, upgradeDetails
+    return score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore
 end
 
 --[[
     RankDungeons(playerGear)
     Returns a sorted list of dungeon results (best dungeon first).
 ]]
-function DungeonAdvisorCalc:RankDungeons(playerGear)
+function DungeonAdvisorCalc:RankDungeons()
+    -- Ensure player gear is available (scan if needed)
+    local playerGear = DungeonAdvisor.playerGear or DungeonAdvisor:GetEquippedGear()
+    if not playerGear or next(playerGear) == nil then
+        print("|cff00ccff[DungeonAdvisor]|r Player gear not available. Try rescanning.")
+        return
+    end
+
     local selectedDiff = ns.state.selectedDifficulty or "M+2"  -- Default to M+2 if not set
     local dungeonMap = {}
 
@@ -407,7 +420,7 @@ function DungeonAdvisorCalc:RankDungeons(playerGear)
                       itemEquipLoc, itemTexture, sellPrice, classID, subclassID, bindType, expacID, setID, isCraftingReagent = GetItemInfo(source)
 
                 if not itemName or not itemLevel then
-                    print(string.format("[DungeonAdvisor] RankDungeons: unresolved item, dungeon=%s item=%s", dungeonEntry.name or "unknown", tostring(source)))
+                    --print(string.format("[DungeonAdvisor] RankDungeons: unresolved item, dungeon=%s item=%s", dungeonEntry.name or "unknown", tostring(source)))
                 else
                     local slot = self:GetSlotFromEquipLoc(itemEquipLoc)
                     if not slot then
@@ -428,8 +441,9 @@ function DungeonAdvisorCalc:RankDungeons(playerGear)
         end
 
         if #drops > 0 then
-            local score, upgradeCount, totalIlvlGain, upgradeDetails = self:CalculateDungeonScore(drops, playerGear)
-            local efficiency = totalIlvlGain / #drops
+            local score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore = self:CalculateDungeonScore(drops, playerGear)
+            local avgStatScore = upgradeCount > 0 and (totalStatScore / upgradeCount) or 0
+            local efficiency = (totalIlvlGain / #drops) * (1 + avgStatScore * 0.2)
             table.insert(results, {
                 name           = dungeonEntry.name,
                 score          = score,

@@ -143,6 +143,24 @@ local function RenderDetailPanel(scrollChild, dungeonResult, yStart)
     end
 end
 
+function DungeonAdvisorUI:RebuildScrollChild()
+    -- Destroy the old scroll child and create a fresh one
+    if self.scrollChild then
+        self.scrollChild:Hide()
+        self.scrollChild:SetParent(nil)
+    end
+
+    local scrollChild = CreateFrame("Frame", nil, self.scrollFrame)
+    scrollChild:SetSize(FRAME_WIDTH - 180, 800)
+    self.scrollFrame:SetScrollChild(scrollChild)
+    self.scrollChild = scrollChild
+
+    -- Reset detail panel references since the parent is gone
+    detailRows = {}
+    detailHeader = nil
+    dungeonRows = {}
+end
+
 -- Build the main dungeon list rows
 local dungeonRows = {}
 
@@ -300,31 +318,15 @@ end
 
 
 function DungeonAdvisorUI:RefreshDungeonList()
-    -- Ensure loot DB is loaded
     if not DungeonAdvisorLootDB or #DungeonAdvisorLootDB == 0 then
-        print("|cff00ccff[DungeonAdvisor]|r Loot DB not loaded yet. Try reloading or waiting for login.")
+        print("|cff00ccff[DungeonAdvisor]|r Loot DB not loaded yet.")
         return
     end
-    
-    -- Ensure player gear is available (scan if needed)
+    self:RebuildScrollChild()
     local gear = DungeonAdvisor.playerGear or DungeonAdvisor:GetEquippedGear()
-    if not gear or next(gear) == nil then
-        print("|cff00ccff[DungeonAdvisor]|r Player gear not available. Try rescanning.")
-        return
-    end
-    
-    -- Recalculate dungeon rankings with the new selected difficulty
     local results = DungeonAdvisorCalc:RankDungeons(gear)
-    
-    -- Debug: Check results
-    print(string.format("|cff00ccff[DungeonAdvisor]|r Refreshed dungeon list for difficulty %s: %d results", ns.state.selectedDifficulty, #results))
-    
     BuildDungeonRows(self.scrollChild, results)
-    
-    -- Clear any existing detail panel (since the list changed)
-    for _, r in ipairs(detailRows) do r:Hide() end
-    detailRows = {}
-    if detailHeader then detailHeader:Hide() end
+    print(string.format("|cff00ccff[DungeonAdvisor]|r Refreshed for difficulty %s: %d results", ns.state.selectedDifficulty, #results))
 end
 
 
@@ -423,7 +425,6 @@ function DungeonAdvisorUI:Create()
     scanBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -28, -26)
     scanBtn:SetText("Rescan Gear")
     scanBtn:SetScript("OnClick", function()
-        DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear()
         DungeonAdvisorUI:Refresh()
     end)
 
@@ -452,11 +453,14 @@ function DungeonAdvisorUI:Create()
 
     self.frame       = f
     self.scrollChild = scrollChild
+    self.scrollFrame = sf  -- save reference alongside self.scrollChild
 end
 
 function DungeonAdvisorUI:Refresh()
-    local gear    = DungeonAdvisor.playerGear or DungeonAdvisor:GetEquippedGear()
-    local results = DungeonAdvisorCalc:RankDungeons(gear)
+    DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear()
+    ns:DetectLootSpec()
+    local results = DungeonAdvisorCalc:RankDungeons()
+    self:RebuildScrollChild()
     BuildDungeonRows(self.scrollChild, results)
     -- Clear detail panel
     for _, r in ipairs(detailRows) do r:Hide() end

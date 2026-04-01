@@ -27,6 +27,17 @@ local CLASS_ARMOR = {
 -- Weapon types each spec can equip/use in practice.
 -- Key format: "CLASS_SPECINDEX" (specIndex 1/2/3/4 as returned by GetSpecialization)
 -- Classes with identical weapon rules per spec share the same table.
+    -- ["One-Handed Axes"]=true,
+    -- ["One-Handed Swords"]=true,
+    -- ["One-Handed Maces"]=true, 
+    -- ["Daggers"]=true,
+    -- ["Fist Weapons"]=true,
+    -- ["Two-Handed Axes"]=true,
+    -- ["Two-Handed Swords"]=true,
+    -- ["Two-Handed Maces"]=true,
+    -- ["Polearms"]=true,
+    -- ["Staves"]=true,
+    -- OFFHAND=true
 -- -----------------------------------------------------------------------
 local SPEC_WEAPONS = {
     -- WARRIOR
@@ -51,28 +62,40 @@ local SPEC_WEAPONS = {
 
     -- SHAMAN
     SHAMAN_1 = { ONE_HAND=true, TWO_HAND=true, SHIELD=true,  STAFF=true,  BOW=false, WAND=false }, -- Elemental
-    SHAMAN_2 = { ONE_HAND=true, TWO_HAND=true, SHIELD=true,  STAFF=true,  BOW=false, WAND=false }, -- Enhancement
+    SHAMAN_2 = { -- Enhancement
+        ["One-Handed Axes"]=true,
+        ["One-Handed Maces"]=true, 
+        ["Fist Weapons"]=true,
+    }, 
     SHAMAN_3 = { --Restoration
         ["One-Handed Axes"]=true,
-        ["One-Handed Swords"]=false,
         ["One-Handed Maces"]=true, 
         ["Daggers"]=true,
         ["Fist Weapons"]=true,
-        ["Two-Handed Swords"]=false,
         ["Two-Handed Maces"]=true,
-        ["Two-Handed Axes"]=false,
-        ["Polearms"]=false,
         ["Staves"]=true,
     },
 
     -- HUNTER
     HUNTER_1 = { ONE_HAND=true, TWO_HAND=true, SHIELD=false, STAFF=true,  BOW=true,  WAND=false }, -- Beast Mastery
-    HUNTER_2 = { ONE_HAND=true, TWO_HAND=true, SHIELD=false, STAFF=true,  BOW=true,  WAND=false }, -- Marksmanship
+    HUNTER_2 = { --Marksmanship
+        ["Bows"]=true,
+        ["Crossbows"]=true,
+        ["Guns"]=true,
+    },
     HUNTER_3 = { ONE_HAND=true, TWO_HAND=true, SHIELD=false, STAFF=true,  BOW=true,  WAND=false }, -- Survival
 
     -- MONK  (no shields, no ranged weapons)
     MONK_1 = { ONE_HAND=true, TWO_HAND=true, SHIELD=false, STAFF=true,  BOW=false, WAND=false }, -- Brewmaster
-    MONK_2 = { ONE_HAND=true, TWO_HAND=true, SHIELD=false, STAFF=true,  BOW=false, WAND=false }, -- Mistweaver
+    MONK_2 = { --Mistweaver
+        ["One-Handed Axes"]=true,
+        ["One-Handed Maces"]=true, 
+        ["One-Handed Swords"]=true, 
+        ["Fist Weapons"]=true,
+        ["Staves"]=true,
+        ["Polearms"]=true,
+        OFFHAND=true
+    },
     MONK_3 = { ONE_HAND=true, TWO_HAND=true, SHIELD=false, STAFF=true,  BOW=false, WAND=false }, -- Windwalker
 
     -- DRUID
@@ -82,23 +105,59 @@ local SPEC_WEAPONS = {
     DRUID_4 = { ONE_HAND=true, TWO_HAND=true, SHIELD=false, STAFF=true,  BOW=false, WAND=false }, -- Restoration
 
     -- ROGUE
-    ROGUE_1 = { ONE_HAND=true, TWO_HAND=false,SHIELD=false, STAFF=false, BOW=false, WAND=false }, -- Assassination
-    ROGUE_2 = { ONE_HAND=true, TWO_HAND=false,SHIELD=false, STAFF=false, BOW=false, WAND=false }, -- Outlaw
-    ROGUE_3 = { ONE_HAND=true, TWO_HAND=false,SHIELD=false, STAFF=false, BOW=false, WAND=false }, -- Subtlety
+    ROGUE_1 = {  -- Assassination
+        ["Daggers"]=true,
+    },
+    ROGUE_2  = {  -- Outlaw
+        ["One-Handed Axes"]=true,
+        ["One-Handed Swords"]=true,
+        ["One-Handed Maces"]=true, 
+        ["Fist Weapons"]=true,
+    },
+    ROGUE_3 = {  -- Subtlety
+        ["Daggers"]=true,
+    },
 
     -- EVOKER
-    EVOKER_1 = { ONE_HAND=true, TWO_HAND=true, SHIELD=false, STAFF=true,  BOW=false, WAND=false }, -- Devastation
-    EVOKER_2 = { --Preservation
+    EVOKER_1 = { --Devastation
+        ["One-Handed Axes"]=true,
         ["One-Handed Swords"]=true,
         ["One-Handed Maces"]=true, 
         ["Daggers"]=true,
         ["Fist Weapons"]=true,
+        ["Two-Handed Axes"]=true,
         ["Two-Handed Swords"]=true,
         ["Two-Handed Maces"]=true,
         ["Polearms"]=true,
         ["Staves"]=true,
+        OFFHAND=true
     },
-    EVOKER_3 = { ONE_HAND=true, TWO_HAND=true, SHIELD=false, STAFF=true,  BOW=false, WAND=false }, -- Augmentation
+    EVOKER_2 = { --Preservation
+        ["One-Handed Axes"]=true,
+        ["One-Handed Swords"]=true,
+        ["One-Handed Maces"]=true, 
+        ["Daggers"]=true,
+        ["Fist Weapons"]=true,
+        ["Two-Handed Axes"]=true,
+        ["Two-Handed Swords"]=true,
+        ["Two-Handed Maces"]=true,
+        ["Polearms"]=true,
+        ["Staves"]=true,
+        OFFHAND=true
+    },
+    EVOKER_3 = { --Augmentation
+        ["One-Handed Axes"]=true,
+        ["One-Handed Swords"]=true,
+        ["One-Handed Maces"]=true, 
+        ["Daggers"]=true,
+        ["Fist Weapons"]=true,
+        ["Two-Handed Axes"]=true,
+        ["Two-Handed Swords"]=true,
+        ["Two-Handed Maces"]=true,
+        ["Polearms"]=true,
+        ["Staves"]=true,
+        OFFHAND=true
+    },
 
     -- MAGE
     MAGE_1 = { ONE_HAND=true, TWO_HAND=false,SHIELD=false, STAFF=true,  BOW=false, WAND=true  }, -- Arcane
@@ -115,6 +174,51 @@ local SPEC_WEAPONS = {
     PRIEST_2 = { ONE_HAND=true, TWO_HAND=false,SHIELD=false, STAFF=true,  BOW=false, WAND=true  }, -- Holy
     PRIEST_3 = { ONE_HAND=true, TWO_HAND=false,SHIELD=false, STAFF=true,  BOW=false, WAND=true  }, -- Shadow
 }
+
+-- Expand shorthand weapon tables into actual WoW itemSubType strings
+local ONE_HAND_TYPES = {
+    ["One-Handed Swords"] = true,
+    ["One-Handed Axes"]   = true,
+    ["One-Handed Maces"]  = true,
+    ["Daggers"]           = true,
+    ["Fist Weapons"]      = true,
+}
+local TWO_HAND_TYPES = {
+    ["Two-Handed Swords"] = true,
+    ["Two-Handed Axes"]   = true,
+    ["Two-Handed Maces"]  = true,
+    ["Polearms"]          = true,
+    ["Staves"]            = true,
+}
+local BOW_TYPES  = { ["Bows"]=true, ["Guns"]=true, ["Crossbows"]=true }
+local WAND_TYPES = { ["Wands"]=true }
+local OFFHAND_TYPES = { ["HOLDABLE"]=true }
+
+local function ExpandWeaponTable(specWeapons)
+    local expanded = {}
+    
+    for k, v in pairs(specWeapons) do
+        if k == "ONE_HAND" and v then
+            for subType in pairs(ONE_HAND_TYPES) do expanded[subType] = true end
+        elseif k == "TWO_HAND" and v then
+            for subType in pairs(TWO_HAND_TYPES) do expanded[subType] = true end
+        elseif k == "STAFF" and v then
+            expanded["Staves"] = true
+        elseif k == "SHIELD" and v then
+            expanded["Shields"] = true
+        elseif k == "BOW" and v then
+            for subType in pairs(BOW_TYPES) do expanded[subType] = true end
+        elseif k == "WAND" and v then
+            for subType in pairs(WAND_TYPES) do expanded[subType] = true end
+        elseif k == "OFFHAND" and v then
+            for subType in pairs(OFFHAND_TYPES) do expanded[subType] = true end
+        else
+            -- Already a raw subtype string (e.g. from Mistweaver/Marksman tables)
+            expanded[k] = v
+        end
+    end
+    return expanded
+end
 
 -- -----------------------------------------------------------------------
 -- Public API
@@ -135,11 +239,22 @@ end
 function DungeonAdvisorSpecFilter:CanUse(drop)
     local className, specIndex = self:GetPlayerSpec()
     local specKey = className .. "_" .. specIndex
-
+    return true
     -- Rings, necks, trinkets, cloaks are universal
-    local universalSlots = { FINGER=true, NECK=true, TRINKET=true, BACK=true, OFFHAND=true }
+    local universalSlots = { FINGER=true, NECK=true, TRINKET=true, BACK=true }
     if drop.slot and universalSlots[drop.slot] then
         return true
+    end
+
+    -- Held-in-hand offhand check (tomes, orbs etc.)
+    print("OFFHAND??" .. drop.slot .. drop.itemType)
+    if drop.slot == "OFFHAND" and drop.itemType == "Armor" then
+        local specWeapons = SPEC_WEAPONS[specKey]
+        if not specWeapons then return true end
+        local expanded = ExpandWeaponTable(specWeapons)
+        print(specWeapons)
+        print(expanded)
+        return expanded["HOLDABLE"] == true
     end
 
     -- Armor check
@@ -150,16 +265,23 @@ function DungeonAdvisorSpecFilter:CanUse(drop)
         end
     end
 
-    -- Weapon / offhand check
-    print("Checking weapon type", drop.itemType, drop.itemSubType, "for spec", specKey)
-    if drop.itemType == "Weapon" or drop.itemType == "OffHand" then
+    -- Shield check (itemType == "Armor", subType == "Shields")
+    if drop.itemType == "Armor" and drop.itemSubType == "Shields" then
         local specWeapons = SPEC_WEAPONS[specKey]
-        if not specWeapons then
-            -- Unknown spec — allow everything to avoid false negatives
-            return true
-        end
-        
-        if specWeapons[drop.itemSubType] == false or not specWeapons[drop.itemSubType] then
+        if not specWeapons then return true end
+        local expanded = ExpandWeaponTable(specWeapons)
+        return expanded["Shields"] == true
+    end
+
+    
+
+    -- Weapon check
+    if drop.itemType == "Weapon" then
+        local specWeapons = SPEC_WEAPONS[specKey]
+        if not specWeapons then return true end
+
+        local expanded = ExpandWeaponTable(specWeapons)
+        if not expanded[drop.itemSubType] then
             return false
         end
     end
