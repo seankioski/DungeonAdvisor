@@ -425,7 +425,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
 end
 
 --[[
-    RankDungeons(playerGear)
+    RankDungeons()
     Returns a sorted list of dungeon results (best dungeon first).
 ]]
 function DungeonAdvisorCalc:RankDungeons()
@@ -495,7 +495,7 @@ function DungeonAdvisorCalc:RankDungeons()
                 end
             end
         end
-
+        --print(string.format("[DungeonAdvisor] %s: found %d drops for %s", selectedDiff, #drops, dungeonEntry.name or "unknown"))
         if #drops > 0 then
             local score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore = self:CalculateDungeonScore(drops, playerGear)
             local avgStatScore = upgradeCount > 0 and (totalStatScore / upgradeCount) or 0

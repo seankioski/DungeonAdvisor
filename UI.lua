@@ -89,6 +89,7 @@ end
 -- Build the detail panel shown below the dungeon list
 local detailRows = {}
 local detailHeader
+local dungeonRows = {}
 
 local function RenderDetailPanel(scrollChild, dungeonResult, yStart)
     -- Clear previous detail rows
@@ -144,6 +145,7 @@ local function RenderDetailPanel(scrollChild, dungeonResult, yStart)
 end
 
 function DungeonAdvisorUI:RebuildScrollChild()
+    if not self.scrollFrame then return end
     -- Destroy the old scroll child and create a fresh one
     if self.scrollChild then
         self.scrollChild:Hide()
@@ -162,8 +164,6 @@ function DungeonAdvisorUI:RebuildScrollChild()
 end
 
 -- Build the main dungeon list rows
-local dungeonRows = {}
-
 local function BuildDungeonRows(scrollChild, results)
     -- Clear old rows
     for _, r in ipairs(dungeonRows) do
@@ -195,7 +195,7 @@ local function BuildDungeonRows(scrollChild, results)
         "The name of the Mythic+ dungeon, ranked by overall upgrade score.")
 
     local headerEff = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    headerEff:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 280, headerY)
+    headerEff:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 250, headerY)
     headerEff:SetText("Efficiency")
     headerEff:SetTextColor(1, 1, 1)
     AttachHeaderTooltip(headerEff, scrollChild,
@@ -203,7 +203,7 @@ local function BuildDungeonRows(scrollChild, results)
         "Efficiency factor for obtaining upgrades. Higher is better.\nFactors in:\n- ilvl upgrades\n- secondary stat weights\n- item track upgrades")
 
     local headerDrops = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    headerDrops:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 370, headerY)
+    headerDrops:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 340, headerY)
     headerDrops:SetText("% Upgrades")
     headerDrops:SetTextColor(1, 1, 1)
     AttachHeaderTooltip(headerDrops, scrollChild,
@@ -211,7 +211,7 @@ local function BuildDungeonRows(scrollChild, results)
         "How many of this dungeon's drops are an upgrade for you.\n(Upgrades / Total drops).")
 
     local headerInfo = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    headerInfo:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -8, headerY)
+    headerInfo:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -20, headerY)
     headerInfo:SetText("Upgrades / iLvl")
     headerInfo:SetTextColor(1, 1, 1)
     AttachHeaderTooltip(headerInfo, scrollChild,
@@ -299,8 +299,8 @@ local function BuildDungeonRows(scrollChild, results)
         -- Click to show details below the list
         local capturedResult = result
         bg:SetScript("OnClick", function()
-            local detailY = -(#results * (ROW_HEIGHT + 6) + 30)
-            RenderDetailPanel(scrollChild, capturedResult, detailY)
+            --local detailY = -(#results * (ROW_HEIGHT + 6) + 30)
+            --RenderDetailPanel(scrollChild, capturedResult, detailY)
         end)
 
         table.insert(dungeonRows, { bg = bg, label = label, stars = starsFS, info = info })
@@ -318,15 +318,71 @@ end
 
 
 function DungeonAdvisorUI:RefreshDungeonList()
+    self:Create()  -- safe to call multiple times, returns early if already created
     if not DungeonAdvisorLootDB or #DungeonAdvisorLootDB == 0 then
         print("|cff00ccff[DungeonAdvisor]|r Loot DB not loaded yet.")
         return
     end
     self:RebuildScrollChild()
     local gear = DungeonAdvisor.playerGear or DungeonAdvisor:GetEquippedGear()
-    local results = DungeonAdvisorCalc:RankDungeons(gear)
+    local results = DungeonAdvisorCalc:RankDungeons()
     BuildDungeonRows(self.scrollChild, results)
-    print(string.format("|cff00ccff[DungeonAdvisor]|r Refreshed for difficulty %s: %d results", ns.state.selectedDifficulty, #results))
+    --print(string.format("|cff00ccff[DungeonAdvisor]|r Refreshed for difficulty %s: %d results", ns.state.selectedDifficulty, #results))
+end
+
+
+
+-- Overlay + spinner shown while loot data is incomplete
+local spinnerFrame
+local spinnerTicker
+
+function DungeonAdvisorUI:ShowSpinner()
+    if not self.frame then return end
+
+    if not spinnerFrame then
+        -- Dark overlay covering the scroll area
+        spinnerFrame = CreateFrame("Frame", nil, self.frame)
+        spinnerFrame:SetPoint("TOPLEFT",     self.scrollFrame, "TOPLEFT")
+        spinnerFrame:SetPoint("BOTTOMRIGHT", self.scrollFrame, "BOTTOMRIGHT")
+        spinnerFrame:SetFrameLevel(self.frame:GetFrameLevel() + 10)
+
+        local bg = spinnerFrame:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0, 0, 0, 0.6)
+
+        -- Spinning texture (WoW has a built-in loading circle)
+        local spin = spinnerFrame:CreateTexture(nil, "OVERLAY")
+        spin:SetSize(64, 64)
+        spin:SetPoint("CENTER", spinnerFrame, "CENTER", 0, 10)
+        spin:SetTexture("Interface\\Icons\\Spell_Holy_CircleOfHealing")
+        spinnerFrame.spin = spin
+
+        -- "Loading..." label
+        local label = spinnerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        label:SetPoint("CENTER", spin, "CENTER", 0, 0)
+        label:SetText("|cffAAAAAALoading loot data...|r")
+        spinnerFrame.label = label
+    end
+
+    spinnerFrame:Show()
+
+    -- Rotate the texture a bit each tick
+    local angle = 0
+    if spinnerTicker then spinnerTicker:Cancel() end
+    spinnerTicker = C_Timer.NewTicker(0.03, function()
+        angle = (angle + 6) % 360
+        spinnerFrame.spin:SetRotation(math.rad(angle))
+    end)
+end
+
+function DungeonAdvisorUI:HideSpinner()
+    if spinnerTicker then
+        spinnerTicker:Cancel()
+        spinnerTicker = nil
+    end
+    if spinnerFrame then
+        spinnerFrame:Hide()
+    end
 end
 
 
@@ -391,7 +447,7 @@ end
 
 
 
-
+local sidebar
 function DungeonAdvisorUI:Create()
     if self.frame then return end
 
@@ -409,15 +465,15 @@ function DungeonAdvisorUI:Create()
     -- Title
     f.TitleText:SetText("DungeonAdvisor — M+ Upgrade Finder")
 
-    -- Subtitle / instruction bar (adjust position to account for sidebar)
-    local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    subtitle:SetPoint("TOPLEFT", f, "TOPLEFT", 150, -30)  -- Shift right to avoid sidebar
-    subtitle:SetText("|cffAAAAAAClick a dungeon for slot details  •  Hover for tooltip|r")
-
-    -- Subtitle / instruction bar (adjust position to account for sidebar)
+    -- Bottom info
     local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     subtitle:SetPoint("BOTTOM", f, "BOTTOM", 0, 10)  -- Shift right to avoid sidebar
     subtitle:SetText("|cffAAAAAAAt the end of a dungeon 2/5 players will get a loot drop|r")
+
+    -- Version
+    local verString = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    verString:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
+    verString:SetText(DungeonAdvisor.version)
 
     -- Scan button (adjust position)
     local scanBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
@@ -429,7 +485,7 @@ function DungeonAdvisorUI:Create()
     end)
 
     -- Sidebar for difficulty buttons (separate vertical stack)
-    local sidebar = CreateFrame("Frame", nil, f)
+    sidebar = CreateFrame("Frame", nil, f)
     sidebar:SetSize(130, FRAME_HEIGHT - 60)  -- Width for buttons, height to fit
     sidebar:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -30)
     -- Optional: Add a subtle background to the sidebar
@@ -444,6 +500,7 @@ function DungeonAdvisorUI:Create()
     local sf = CreateFrame("ScrollFrame", "DungeonAdvisorScroll", f, "UIPanelScrollFrameTemplate")
     sf:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 10, 0)  -- Right of sidebar
     sf:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -28, 10)
+    self.scrollFrame = sf
 
     local scrollChild = CreateFrame("Frame", "DungeonAdvisorScrollChild", sf)
     scrollChild:SetSize(FRAME_WIDTH - 180, 800)  -- Adjust width to fit new layout
@@ -453,15 +510,27 @@ function DungeonAdvisorUI:Create()
 
     self.frame       = f
     self.scrollChild = scrollChild
-    self.scrollFrame = sf  -- save reference alongside self.scrollChild
+end
+
+local specString
+function DungeonAdvisorUI:UpdateSpecInfo()
+    if not self.frame then return end
+    if not specString then
+        specString = sidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        specString:SetPoint("TOP", sidebar, "TOP", 0, 0)
+        specString:SetJustifyH("CENTER")
+    end
+    specString:SetText(string.format("%s %s", ns.state.selectedSpecName, ns.state.selectedClassName))
 end
 
 function DungeonAdvisorUI:Refresh()
+    self:Create()  -- ensure frame exists before rebuilding
     DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear()
     ns:DetectLootSpec()
-    local results = DungeonAdvisorCalc:RankDungeons()
-    self:RebuildScrollChild()
-    BuildDungeonRows(self.scrollChild, results)
+    DungeonAdvisorUI:UpdateSpecInfo()
+    --After loading loot spec, load loot DB to ensure it's for the correct spec. This also ensures the DB is loaded before we try to render anything.
+    DungeonAdvisor:InitializeLootDB()
+    DungeonAdvisorUI:RefreshDungeonList()
     -- Clear detail panel
     for _, r in ipairs(detailRows) do r:Hide() end
     detailRows = {}
@@ -473,7 +542,7 @@ function DungeonAdvisorUI:Toggle()
     if self.frame:IsShown() then
         self.frame:Hide()
     else
-        self:Refresh()
         self.frame:Show()
+        DungeonAdvisorUI:Refresh()
     end
 end

@@ -2,8 +2,6 @@
 --add filter for champ vs hero upgrades
 -- add filter for tier set slot track upgrades
 -- trinket info not showing
--- update all classes weapon usability table
--- make sure bows, guns, wands, shields are all handled and shown
 
 local addonName, ns = ...
 
@@ -25,7 +23,7 @@ ns.state = {
 -- Initializes the addon and reads character gear via WoW API
 
 DungeonAdvisor = {}
-DungeonAdvisor.version = "1.0.0"
+DungeonAdvisor.version = "1.0.2"
 
 -- Global loot database (populated at PLAYER_LOGIN)
 DungeonAdvisorLootDB = {}
@@ -85,9 +83,9 @@ function ns:DetectLootSpec()
         end
     end
 
-    ns.state.selectedSpecName = select(2, GetSpecializationInfo(ns.state.selectedSpecID))
+    ns.state.selectedSpecName = select(2, GetSpecializationInfo(ns.state.selectedSpecIndex)) or ""
 
-    --print(string.format("|cff00ccff[DungeonAdvisor]|r Detected loot spec |cffFFD700%s %s|r.", ns.state.selectedSpecName, className))
+    --print(string.format("|cff00ccff[DungeonAdvisor]|r Detected loot spec |cffFFD700%s %s|r.", ns.state.selectedSpecName, ns.playerClassName))
 end
 
 -- Returns a table of { slotName -> currentIlvl } for the player
@@ -131,25 +129,18 @@ function DungeonAdvisor:GetEquippedGear()
     return gear
 end
 
--- Load data (from Data.lua)
-local function InitializeLootDB()
-    local specIndex = GetSpecialization()
-    if not specIndex then
-        print("|cff00ccff[DungeonAdvisor]|r Warning: No active spec")
-        return
+function DungeonAdvisor:InitializeLootDB()
+    -- show spinner only if we know items are still pending or DB is empty
+    if #DungeonAdvisorLootDB == 0 or ns:IsDataPending() then
+        DungeonAdvisorUI:ShowSpinner()
     end
-
-    -- Scan all dungeons × all difficulties in one call
-    local results = ns:ScanLoot(specIndex, nil)
-    
+    local results = ns:ScanLoot(ns.state.selectedSpecIndex)
     if not results or #results == 0 then
         print("|cff00ccff[DungeonAdvisor]|r Warning: No loot data returned")
+        DungeonAdvisorUI:HideSpinner()
         return
     end
-
     DungeonAdvisorLootDB = results
-
-    print(string.format("|cff00ccff[DungeonAdvisor]|r Loaded loot cache"))
 end
 
 -- Event frame
@@ -162,12 +153,9 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         DungeonAdvisorDB = DungeonAdvisorDB or {}
         print("|cff00ccff[DungeonAdvisor]|r Loaded! Type |cffFFD700/da|r to open.")
     end
-
     if event == "PLAYER_ENTERING_WORLD" then
-        print("|cff00ccff[DungeonAdvisor]|r Initializing player login...")
-        -- Build loot DB first
-        InitializeLootDB()
-        DungeonAdvisorUI:Refresh()
+        ns:DetectLootSpec()
+        DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear()
     end
 end)
 
@@ -178,11 +166,7 @@ SLASH_DUNGEONADVISOR1 = "/da"
 SLASH_DUNGEONADVISOR2 = "/dungeonadvisor"
 SlashCmdList["DUNGEONADVISOR"] = function(msg)
     msg = msg:lower():trim()
-    if msg == "scan" then
-        ns:DetectLootSpec()
-        DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear()
-        print("|cff00ccff[DungeonAdvisor]|r Gear rescanned.")
-    elseif msg == "debug" then
+    if msg == "debug" then
         DungeonAdvisor:PrintGearDebug()
     else
         DungeonAdvisorUI:Toggle()

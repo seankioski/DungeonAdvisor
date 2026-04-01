@@ -200,19 +200,26 @@ local function BuildItemLinkWithBonuses(itemID, trackBonusKey)
     if not bonusID then return nil end
 
     local playerLevel = UnitLevel("player") or 80
-    -- item:ID:enchant:gem1:gem2:gem3:gem4:suffix:unique:level:spec::context:numBonuses:bonus1
     local itemString = "item:" .. itemID .. "::::::::" .. playerLevel .. "::::1:" .. bonusID
 
     local itemName, _, itemQuality = GetItemInfo(itemID)
-    if not itemName then return nil end  -- not cached yet
+    if not itemName then
+        --print("|cff00ccffDA DEBUG:|r Registering pending itemID=" .. tostring(itemID))
+        pendingItemIDs[itemID] = true
+        return nil
+    end
 
     local colorHex = ITEM_QUALITY_COLORS[itemQuality] or ITEM_QUALITY_COLORS[4]
     return "|c" .. colorHex .. "|H" .. itemString .. "|h[" .. itemName .. "]|h|r"
 end
 
-local lootCache = {}      -- key: "specID-slotFilter"
-local instanceCache = nil -- dungeons, set once per session
-ns.isScanning = false     -- prevents EJ events from clearing cache mid-scan
+local lootCache = {}
+local instanceCache = nil
+ns.isScanning = false
+local pendingItemIDs = {}       -- itemIDs we're waiting on from server cache
+local hasNormalPending = false  -- instanceCache has unresolved hasNormal checks
+local lastItemReceivedTime = 0
+local missedRefreshDuringScan = false
 
 ------------------------------------------------------------------------
 -- EJ suppression
@@ -261,7 +268,8 @@ local function UnsuppressEJ()
     ejSuppressCount = ejSuppressCount - 1
     if ejSuppressCount > 0 then return end
     ejSuppressCount = 0
-
+    --print("|cff00ccffDungeonAdvisor DEBUG:|r UnsuppressEJ called from: " .. debugstack(2, 3, 0))
+    
     if EncounterJournal then
         -- restore EJ state before re-enabling events so it doesn't see our scan's leftovers
         if ejSavedDifficulty then
@@ -301,11 +309,16 @@ local SEASONAL_DUNGEON_IDS = {
     [476]  = true,  -- Skyreach
 }
 
-local WORLD_BOSS_INSTANCE_ID = 1312  -- "Midnight" world bosses
+function ns:IsDataSettled()
+    local pending = next(pendingItemIDs)
+    local timeSince = GetTime() - lastItemReceivedTime
+    print(string.format("|cff00ccffDungeonAdvisor DEBUG:|r IsDataSettled - pendingItemIDs empty: %s, timeSince: %.2f", tostring(pending == nil), timeSince))
+    return pending == nil and timeSince > 0.5
+end
 
 -- runs once per session, caches dungeon/raid/boss structure
 function ns:BuildInstanceCache()
-    print("|cff00ccff[DungeonAdvisor]|r Building instance cache...")
+    --print("|cff00ccff[DungeonAdvisor]|r Building instance cache...")
     if instanceCache then return instanceCache end
 
     SuppressEJ()
@@ -349,11 +362,16 @@ function ns:BuildInstanceCache()
                         if numLoot and numLoot > 0 then
                             local testInfo = EJ_GetLootInfoByIndexCompat(1)
                             if testInfo and testInfo.link then
+                                local itemID = testInfo.itemID
                                 local _, _, _, itemLevel = GetItemInfo(testInfo.link)
                                 if itemLevel then
                                     hasNormal = (itemLevel >= 200)
+                                else
+                                    -- cold cache — register miss, will re-evaluate on GET_ITEM_INFO_RECEIVED
+                                    if itemID then pendingItemIDs[itemID] = true end
+                                    hasNormalPending = true
+                                    hasNormal = false  -- safe default: hide Normal until confirmed
                                 end
-                                -- nil ilvl = cold cache, safer to hide Normal than show junk
                             end
                         end
                     end
@@ -391,6 +409,8 @@ local function ScanLootForEncounter(instanceID, encounterID, difficultyID, class
     EJ_SelectInstanceCompat(instanceID)
     EJ_SelectEncounterCompat(encounterID)
     EJ_SetDifficultyCompat(difficultyID)
+    EJ_SetSlotFilterCompat(EISFT.NoFilter) -- explicitly clear slot filter every time
+
 
     if classID and specID then
         EJ_SetLootFilterCompat(classID, specID)
@@ -409,11 +429,13 @@ local function ScanLootForEncounter(instanceID, encounterID, difficultyID, class
         index = index + 1
     end
 
+    --print(string.format("|cff00ccffDA DEBUG:|r encounter=%d diff=%d items=%d", encounterID, difficultyID, #items))
     return items
 end
 
 local function ScanSourceType(results, instances, sourceType, difficulties, classID, specID)
     for _, inst in ipairs(instances) do
+        --print(string.format("Scanning %s: %s...", sourceType, inst.name))
         for _, boss in ipairs(inst.bosses) do
             local entry = {
                 sourceName  = inst.name,
@@ -423,7 +445,6 @@ local function ScanSourceType(results, instances, sourceType, difficulties, clas
                 encounterID = boss.encounterID,
                 items       = {},
             }
-
 
             for _, diff in ipairs(difficulties) do
                 if diff.mythicPlus then
@@ -442,11 +463,12 @@ local function ScanSourceType(results, instances, sourceType, difficulties, clas
                     end
                 end
             end
-
             -- clone Mythic items into M+ columns with proper bonus-ID links
+            --print(string.format("Scanned loot for %s - %s: %d items", entry.sourceName, entry.bossName, #(entry.items[23] or {})))
             if sourceType == "dungeon" and entry.items[23] then
                 for _, diff in ipairs(difficulties) do
                     if diff.mythicPlus then
+                        --print(string.format("Building M+ loot for %s - %s (%s)", entry.sourceName, entry.bossName, diff.fullName))
                         local mpItems = {}
                         for _, item in ipairs(entry.items[23]) do
                             local lootLink = item.itemLink
@@ -458,7 +480,7 @@ local function ScanSourceType(results, instances, sourceType, difficulties, clas
                             if diff.vaultBonusID then
                                 vaultLink = BuildItemLinkWithBonuses(item.itemID, diff.vaultBonusID)
                             end
-                            print("Built M+ link for", item.name, "lootLink:", lootLink, "vaultLink:", vaultLink, "diff:", diff.name)
+                            --print("  ", item.name, "->", lootLink, "and", vaultLink)
                             table.insert(mpItems, {
                                 name          = item.name,
                                 icon          = item.icon,
@@ -497,14 +519,14 @@ function ns:ScanLoot(specIndex)
     if not instanceCache then
         local built = ns:BuildInstanceCache()
         if not built then
-            print("|cffff6060WhereLoot:|r Could not load instance data. Try /reload and try again.")
+            print("|cffff6060DungeonAdvisor:|r Could not load instance data. Try /reload and try again.")
             return {}
         end
     end
 
     SuppressEJ()
     ns.isScanning = true
-    print("|cff00ccff[DungeonAdvisor]|r Scanning loot data for " .. (ns.state.isViewingOtherClass and (GetClassInfo(classID) or "Unknown Class") or "current spec") .. "...")
+    --print("|cff00ccff[DungeonAdvisor]|r Scanning loot data for " .. (ns.state.isViewingOtherClass and (GetClassInfo(classID) or "Unknown Class") or "current spec") .. "...")
     local ok, results = pcall(function()
         local r = {}
         ScanSourceType(r, instanceCache.dungeons,   "dungeon",   ns.DIFFICULTIES.DUNGEON, classID, specID)
@@ -515,9 +537,32 @@ function ns:ScanLoot(specIndex)
     UnsuppressEJ()
 
     if not ok then
-        print("|cffff6060WhereLoot:|r Scan error: " .. tostring(results))
+        print("|cffff6060DungeonAdvisor:|r Scan error: " .. tostring(results))
         return {}
     end
+
+    if missedRefreshDuringScan then
+        missedRefreshDuringScan = false
+        ns:ClearLootCache()
+        ScheduleRefresh()  -- trigger the refresh we missed during the scan
+    end
+
+
+    -- DEBUG: count total loot items per dungeon after scan
+    -- local dungeonTotals = {}
+    -- for _, entry in ipairs(results) do
+    --     local key = entry.sourceName
+    --     if not dungeonTotals[key] then dungeonTotals[key] = 0 end
+    --     for diffID, items in pairs(entry.items) do
+    --         dungeonTotals[key] = dungeonTotals[key] + #items
+    --     end
+    -- end
+    -- print("|cff00ccffDungeonAdvisor DEBUG:|r Scan complete for specID=" .. tostring(cacheKey))
+    -- for dungeonName, total in pairs(dungeonTotals) do
+    --     print(string.format("  %s: %d total item slots", dungeonName, total))
+    -- end
+
+
 
     lootCache[cacheKey] = results
     return results
@@ -576,8 +621,18 @@ function ns:FilterResultsByStats(results, statKeys)
     return filtered, preFilterCount
 end
 
+function ns:IsDataPending()
+    local pendingCount = 0
+    for id, _ in pairs(pendingItemIDs) do
+        pendingCount = pendingCount + 1
+    end
+    --print(string.format("|cff00ccffDA DEBUG:|r IsDataPending - pendingCount=%d, hasNormalPending=%s", pendingCount, tostring(hasNormalPending)))
+    return pendingCount > 0 or hasNormalPending
+end
+
 function ns:ClearLootCache()
     wipe(lootCache)
+    DungeonAdvisorLootDB = {}  -- force InitializeLootDB to rescan
 end
 
 function ns:ClearAllCaches()
@@ -588,24 +643,45 @@ end
 -- debounced refresh when EJ data loads in (but not during our own scans)
 local ejFrame = CreateFrame("Frame")
 local refreshPending = false
+
 function ns:ResetRefreshPending() refreshPending = false end
-ejFrame:RegisterEvent("EJ_LOOT_DATA_RECIEVED")  -- yes, blizz typo'd "RECIEVED"
-ejFrame:RegisterEvent("EJ_DIFFICULTY_UPDATE")
-ejFrame:SetScript("OnEvent", function()
-    if not ns.isScanning then
-        ns:ClearLootCache()
-        if not refreshPending
-           and ns.MainFrame and ns.MainFrame:IsShown()
-           and ns.state.currentPage == ns.Pages.LOOT_DISPLAY
-           and ns.RefreshLootDisplay then
-            refreshPending = true
-            C_Timer.After(0.5, function()
-                refreshPending = false
-                if ns.MainFrame and ns.MainFrame:IsShown()
-                   and ns.state.currentPage == ns.Pages.LOOT_DISPLAY then
-                    ns:RefreshLootDisplay()
-                end
-            end)
+
+local settleTimer = nil
+
+local function ScheduleRefresh()
+    if refreshPending then return end
+    refreshPending = true
+    C_Timer.After(0.5, function()
+        refreshPending = false
+        if DungeonAdvisorUI.frame and DungeonAdvisorUI.frame:IsShown() then
+            DungeonAdvisor:InitializeLootDB()
+            DungeonAdvisorUI:RefreshDungeonList()
         end
+    end)
+
+    -- reset the settle timer every time new data arrives
+    if settleTimer then
+        settleTimer:Cancel()
     end
+    settleTimer = C_Timer.NewTimer(2.0, function()
+        settleTimer = nil
+        if DungeonAdvisorUI.frame and DungeonAdvisorUI.frame:IsShown() then
+            DungeonAdvisorUI:HideSpinner()
+        end
+    end)
+end
+
+ejFrame:RegisterEvent("EJ_LOOT_DATA_RECIEVED")
+ejFrame:RegisterEvent("EJ_DIFFICULTY_UPDATE")
+ejFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+ejFrame:SetScript("OnEvent", function(self, event, ...)
+    if ns.isScanning then
+        if event == "EJ_LOOT_DATA_RECIEVED" then
+            missedRefreshDuringScan = true  -- remember we got new data mid-scan
+        end
+        return
+    end
+    ns:ClearLootCache()
+    ScheduleRefresh()
 end)
+
