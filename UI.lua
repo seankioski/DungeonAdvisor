@@ -4,10 +4,27 @@ local addonName, ns = ...
 
 DungeonAdvisorUI = {}
 
-local FRAME_WIDTH  = 800
-local FRAME_HEIGHT = 380
+local FRAME_WIDTH  = 1100
+local FRAME_HEIGHT = 460
 local ROW_HEIGHT   = 26
+local DETAIL_WIDTH = 330
 local DETAIL_COLOR = { r = 0.8, g = 0.8, b = 0.8 }
+local SLOT_SORT_ORDER = {
+    ["Main Hand"] = 1,
+    ["Off Hand"]  = 2,
+    ["Head"]      = 3,
+    ["Neck"]      = 4,
+    ["Shoulder"]  = 5,
+    ["Back"]      = 6,
+    ["Chest"]     = 7,
+    ["Wrist"]     = 8,
+    ["Hands"]     = 9,
+    ["Waist"]     = 10,
+    ["Legs"]      = 11,
+    ["Feet"]      = 12,
+    ["Ring"]      = 13,
+    ["Trinket"]   = 14,
+}
 
 -- Color gradient: green (great) → yellow → orange → red (poor)
 local function ScoreColor(score)
@@ -57,10 +74,6 @@ local function AttachTooltip(frame, dungeonResult)
         GameTooltip:AddLine("Best upgrades:", 0.9, 0.7, 0.1)
         local shown = 0
         for _, detail in ipairs(dungeonResult.upgradeDetails) do
-            if shown >= 8 then
-                GameTooltip:AddLine("  ...", 0.6, 0.6, 0.6)
-                break
-            end
             local slotText = string.format("  [%s]", detail.label)
             local gainText = string.format("%s  |cff00ff44+%d ilvl|r", detail.itemName, detail.gain)
             GameTooltip:AddDoubleLine(slotText, gainText, 0.8,0.8,0.8, 1,1,1)
@@ -69,10 +82,10 @@ local function AttachTooltip(frame, dungeonResult)
             if detail.stats then
                 local s = detail.stats
                 local statParts = {}
-                if s["ITEM_MOD_CRIT_RATING_SHORT"] then table.insert(statParts, string.format("|cffff4444Crit %d|r", s["ITEM_MOD_CRIT_RATING_SHORT"])) end
-                if s["ITEM_MOD_HASTE_RATING_SHORT"] then table.insert(statParts, string.format("|cffFFD700Haste %d|r", s["ITEM_MOD_HASTE_RATING_SHORT"])) end
-                if s["ITEM_MOD_MASTERY_RATING_SHORT"] then table.insert(statParts, string.format("|cff44aaFFMastery %d|r", s["ITEM_MOD_MASTERY_RATING_SHORT"])) end
-                if s["ITEM_MOD_VERSATILITY"] then table.insert(statParts, string.format("|cff44ff88Vers %d|r", s["ITEM_MOD_VERSATILITY"])) end
+                if s["ITEM_MOD_CRIT_RATING_SHORT"] then table.insert(statParts, string.format("|cffff4444%d Crit|r", s["ITEM_MOD_CRIT_RATING_SHORT"])) end
+                if s["ITEM_MOD_HASTE_RATING_SHORT"] then table.insert(statParts, string.format("|cffFFD700%d Haste|r", s["ITEM_MOD_HASTE_RATING_SHORT"])) end
+                if s["ITEM_MOD_MASTERY_RATING_SHORT"] then table.insert(statParts, string.format("|cff44aaFF%d Mastery|r", s["ITEM_MOD_MASTERY_RATING_SHORT"])) end
+                if s["ITEM_MOD_VERSATILITY"] then table.insert(statParts, string.format("|cff44ff88%d Vers|r", s["ITEM_MOD_VERSATILITY"])) end
                 if #statParts > 0 then
                     GameTooltip:AddLine("     " .. table.concat(statParts, "  "))
                 end
@@ -90,88 +103,189 @@ end
 local detailRows = {}
 local detailHeader
 local dungeonRows = {}
+local pinnedResult = nil   -- set when a dungeon is clicked, cleared on second click
+local detailPanel          -- the frame itself
+local detailContent = {}   -- font strings inside the panel, rebuilt on each render
+local detailScrollChild
+local statInputs = {}
 
-local function RenderDetailPanel(scrollChild, dungeonResult, yStart)
-    -- Clear previous detail rows
-    for _, r in ipairs(detailRows) do r:Hide() end
-    detailRows = {}
+local function CreateStatInputs(parent)
+    local stats = {
+        { key = "crit",    label = "Crit" },
+        { key = "haste",   label = "Haste" },
+        { key = "mastery", label = "Mastery" },
+        { key = "vers",    label = "Vers" },
+    }
 
-    if detailHeader then detailHeader:Hide() end
+    local startY = -50  -- below spec text
+
+    for i, stat in ipairs(stats) do
+        local rowY = startY - (i - 1) * 26
+
+        -- Label
+        local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, rowY)
+        label:SetText(stat.label)
+
+        -- Input box
+        local editBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+        editBox:SetSize(36, 20)
+        editBox:SetPoint("LEFT", label, "LEFT", 78, 0)
+        editBox:SetAutoFocus(false)
+        editBox:SetNumeric(false)
+
+        editBox:SetScript("OnEnterPressed", function(self)
+            local val = tonumber(self:GetText())
+            if val then
+                DungeonAdvisorCalc:SetStatWeight(stat.key, val)
+                DungeonAdvisorUI:RefreshDungeonList()
+            end
+            self:ClearFocus()
+        end)
+
+        editBox:SetScript("OnEscapePressed", function(self)
+            self:ClearFocus()
+        end)
+
+        statInputs[stat.key] = editBox
+    end
+end
+
+local function ClearDetailPanel()
+    for _, fs in ipairs(detailContent) do fs:Hide() end
+    detailContent = {}
+end
+
+local function AddLine(text, r, g, b, indent, fontSize)
+    local font = fontSize == "small" and "GameFontHighlightSmall" or "GameFontHighlight"
+    local fs = detailScrollChild:CreateFontString(nil, "OVERLAY", font)
+    local yOffset = -(#detailContent * 16 + 8)
+    fs:SetPoint("TOPLEFT", detailScrollChild, "TOPLEFT", indent or 8, yOffset)
+    fs:SetWidth(DETAIL_WIDTH - (indent or 8) - 8)
+    fs:SetJustifyH("LEFT")
+    fs:SetTextColor(r or 1, g or 1, b or 1)
+    fs:SetText(text)
+    fs:Show()
+    table.insert(detailContent, fs)
+end
+
+local function AddItemLinkLine(itemLink, itemName, indent)
+    local font = "GameFontHighlightSmall"
+    local fs = detailScrollChild:CreateFontString(nil, "OVERLAY", font)
+    local yOffset = -(#detailContent * 16 + 8)
+    fs:SetPoint("TOPLEFT", detailScrollChild, "TOPLEFT", indent or 8, yOffset)
+    fs:SetWidth(DETAIL_WIDTH - (indent or 8) - 8)
+    fs:SetJustifyH("LEFT")
+    fs:SetText(itemLink or itemName)
+    fs:Show()
+    table.insert(detailContent, fs)
+
+    -- invisible button over the font string for tooltip interaction
+    local btn = CreateFrame("Button", nil, detailScrollChild)
+    btn:SetPoint("TOPLEFT", fs, "TOPLEFT")
+    btn:SetPoint("BOTTOMRIGHT", fs, "BOTTOMRIGHT")
+    btn:SetScript("OnEnter", function(self)
+        if itemLink then
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetHyperlink(itemLink)
+            GameTooltip:Show()
+        end
+    end)
+    btn:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    table.insert(detailContent, btn)
+end
+
+local function RenderDetailPanel(result)
+    ClearDetailPanel()
+    if not detailScrollChild then return end
+
+    if not result then
+        AddLine("\n\n\n\n\n\n\n\n\n\n\nHover over a dungeon to preview details", 0.6, 0.6, 0.6)
+        return
+    end
 
     -- Header
-    detailHeader = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    detailHeader:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 10, yStart - 10)
-    detailHeader:SetText("|cffFFD700" .. dungeonResult.name .. "|r — Upgrade Details")
-    detailHeader:Show()
+    AddLine(result.name, 1, 0.82, 0)
+    AddLine(string.format("%d upgrades  +%d ilvl total", result.upgradeCount, result.totalIlvlGain), 0.2, 1, 0.2)
+    AddLine(" ")
 
-    local y = yStart - 36
-    for i, detail in ipairs(dungeonResult.upgradeDetails) do
-        -- Main row: slot, item name, ilvl change
-        local row = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        row:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 20, y)
-        row:SetWidth(FRAME_WIDTH - 40)
-        row:SetJustifyH("LEFT")
-        local arrow = "|cff888888" .. detail.currentIlvl .. "|r → |cff00ff00" .. detail.dropIlvl .. "|r"
-        local gain  = "|cff00ff44(+" .. detail.gain .. ")|r"
-        row:SetText(string.format("  |cffFFD700[%s]|r  %s  %s  %s",
-            detail.label, detail.itemName, arrow, gain))
-        row:Show()
-        table.insert(detailRows, row)
-        y = y - 20
+    local sorted = {}
+    for _, detail in ipairs(result.upgradeDetails) do
+        table.insert(sorted, detail)
+    end
+    table.sort(sorted, function(a, b)
+        local orderA = SLOT_SORT_ORDER[a.label] or 99
+        local orderB = SLOT_SORT_ORDER[b.label] or 99
+        return orderA < orderB
+    end)
 
-        -- Secondary stats sub-row
+    for _, detail in ipairs(sorted) do
+        -- line 1: slot + item name + ilvl arrow all on one line
+        local arrow = "|cff888888" .. detail.currentIlvl .. " -> " .. detail.dropIlvl .. "|r"
+        local gain  = "|cff00ff44+" .. detail.gain .. "|r"
+        AddLine(string.format("|cffFFD700[%s]|r %s %s %s", detail.label, detail.itemLink, arrow, gain), 1, 1, 1, 8, "small")
+
+        -- local arrow = "|cff888888" .. detail.currentIlvl .. " -> " .. detail.dropIlvl .. "|r"
+        -- local gain  = "|cff00ff44+" .. detail.gain .. "|r"
+        -- AddLine(string.format("|cffFFD700[%s]|r  %s  %s", detail.label, arrow, gain), 1, 1, 1, 8, "small")
+
+        -- -- use the actual item link if available, fall back to plain name
+        -- AddItemLinkLine(detail.itemLink, detail.itemName, 14)
+
+        -- line 2: secondary stats only if present
         if detail.stats then
             local s = detail.stats
-            local statParts = {}
-            if s["ITEM_MOD_CRIT_RATING_SHORT"] then table.insert(statParts, string.format("|cffff4444Crit %d|r",      s["ITEM_MOD_CRIT_RATING_SHORT"])) end
-            if s["ITEM_MOD_HASTE_RATING_SHORT"] then table.insert(statParts, string.format("|cffFFD700Haste %d|r",     s["ITEM_MOD_HASTE_RATING_SHORT"])) end
-            if s["ITEM_MOD_MASTERY_RATING_SHORT"] then table.insert(statParts, string.format("|cff44aaFFMastery %d|r",   s["ITEM_MOD_MASTERY_RATING_SHORT"])) end
-            if s["ITEM_MOD_VERSATILITY"] then table.insert(statParts, string.format("|cff44ff88Vers %d|r",      s["ITEM_MOD_VERSATILITY"])) end
-            local sourceTag = detail.fromClient and "|cff888888 (live stats)|r" or "|cff555555 (estimated)|r"
-            if #statParts > 0 then
-                local statRow = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                statRow:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 38, y)
-                statRow:SetWidth(FRAME_WIDTH - 60)
-                statRow:SetJustifyH("LEFT")
-                statRow:SetText(table.concat(statParts, "  ") .. sourceTag)
-                statRow:Show()
-                table.insert(detailRows, statRow)
-                y = y - 18
-            else
-                y = y - 4
+            local parts = {}
+            if s["ITEM_MOD_CRIT_RATING_SHORT"]    then table.insert(parts, string.format("|cffff4444Crit %d|r",    s["ITEM_MOD_CRIT_RATING_SHORT"]))    end
+            if s["ITEM_MOD_HASTE_RATING_SHORT"]   then table.insert(parts, string.format("|cffFFD700Haste %d|r",   s["ITEM_MOD_HASTE_RATING_SHORT"]))   end
+            if s["ITEM_MOD_MASTERY_RATING_SHORT"] then table.insert(parts, string.format("|cff44aaFFMastery %d|r", s["ITEM_MOD_MASTERY_RATING_SHORT"])) end
+            if s["ITEM_MOD_VERSATILITY"]          then table.insert(parts, string.format("|cff44ff88Vers %d|r",    s["ITEM_MOD_VERSATILITY"]))          end
+            if #parts > 0 then
+                AddLine("  " .. table.concat(parts, " · "), 1, 1, 1, 8, "small")
             end
         end
     end
+
+    -- update scroll child height to fit content
+    detailScrollChild:SetHeight(math.max(#detailContent * 16 + 16, 100))
 end
 
 function DungeonAdvisorUI:RebuildScrollChild()
     if not self.scrollFrame then return end
-    -- Destroy the old scroll child and create a fresh one
-    if self.scrollChild then
-        self.scrollChild:Hide()
-        self.scrollChild:SetParent(nil)
+
+    -- hide and release all children of the list frame
+    local child = self.scrollFrame:GetNumChildren()
+    for i = 1, child do
+        local c = select(i, self.scrollFrame:GetChildren())
+        if c then c:Hide() end
     end
 
-    local scrollChild = CreateFrame("Frame", nil, self.scrollFrame)
-    scrollChild:SetSize(FRAME_WIDTH - 180, 800)
-    self.scrollFrame:SetScrollChild(scrollChild)
-    self.scrollChild = scrollChild
+    -- also clear any textures/fontstrings (headers, dividers)
+    for i = 1, self.scrollFrame:GetNumRegions() do
+        local r = select(i, self.scrollFrame:GetRegions())
+        if r then r:Hide() end
+    end
 
-    -- Reset detail panel references since the parent is gone
     detailRows = {}
     detailHeader = nil
     dungeonRows = {}
+    pinnedResult = nil
+    RenderDetailPanel(nil)
 end
 
 -- Build the main dungeon list rows
 local function BuildDungeonRows(scrollChild, results)
-    -- Clear old rows
+    -- Clear old rows and detail panel
     for _, r in ipairs(dungeonRows) do
         if r.bg then r.bg:Hide() end
         if r.label then r.label:Hide() end
         if r.stars then r.stars:Hide() end
         if r.info then r.info:Hide() end
     end
+    pinnedResult = nil
+    RenderDetailPanel(nil)
     dungeonRows = {}
 
     -- Efficiency gradient range
@@ -229,6 +343,12 @@ local function BuildDungeonRows(scrollChild, results)
         bg:SetPoint("TOPLEFT",  scrollChild, "TOPLEFT",  6,  y)
         bg:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -6, y)
 
+        local pinHighlight = bg:CreateTexture(nil, "OVERLAY")
+        pinHighlight:SetAllPoints()
+        pinHighlight:SetTexture("Interface\\QuestFrame\\UI-QuestLogTitleHighlight")
+        pinHighlight:SetVertexColor(0.4, 0.6, 1, 0.5)
+        pinHighlight:Hide()
+
         local bgTex = bg:CreateTexture(nil, "BACKGROUND")
         bgTex:SetAllPoints()
         bgTex:SetColorTexture(r * 0.12, g * 0.12, b * 0.12, 0.5)
@@ -249,7 +369,7 @@ local function BuildDungeonRows(scrollChild, results)
         label:SetTextColor(1, 1, 1)  -- always white
         label:SetText(result.name)
 
-        -- Efficiency label (replacing stars)
+        -- Efficiency label
         local eff = result.efficiency or 0
         local effNorm = (eff - minEff) / (maxEff - minEff)
         if effNorm < 0 then effNorm = 0 end
@@ -263,6 +383,57 @@ local function BuildDungeonRows(scrollChild, results)
         efficiencyText:SetPoint("LEFT", label, "RIGHT", 8, 0)
         efficiencyText:SetTextColor(1, 1, 1)
         efficiencyText:SetText(effColor .. effStr .. "|r")
+
+        local effHitbox = CreateFrame("Frame", nil, bg)
+        effHitbox:SetPoint("TOPLEFT", efficiencyText, "TOPLEFT", -2, 2)
+        effHitbox:SetPoint("BOTTOMRIGHT", efficiencyText, "BOTTOMRIGHT", 2, -2)
+        effHitbox:EnableMouse(true)
+
+        effHitbox:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+
+            GameTooltip:AddLine("Efficiency Breakdown", 1, 1, 1)
+            GameTooltip:AddLine(" ")
+
+            GameTooltip:AddDoubleLine("Total ilvl gain:", result.totalIlvlGain, 0.8,0.8,0.8, 1,1,1)
+            GameTooltip:AddDoubleLine("Drop count:", result.dropCount, 0.8,0.8,0.8, 1,1,1)
+
+            GameTooltip:AddLine(" ")
+
+            GameTooltip:AddDoubleLine("Base (gain/drops):",
+                string.format("%.2f", result.baseValue or 0),
+                0.8,0.8,0.8, 0.6,1,0.6)
+
+            GameTooltip:AddDoubleLine("Avg stat score:",
+                string.format("%.2f", result.avgStatScore or 0),
+                0.8,0.8,0.8, 0.6,0.8,1)
+
+            GameTooltip:AddDoubleLine("Stat multiplier:",
+                string.format("%.2f", result.statMultiplier or 0),
+                0.8,0.8,0.8, 1,0.8,0.4)
+
+            GameTooltip:AddLine(" ")
+
+            GameTooltip:AddDoubleLine("Final Efficiency:",
+                string.format("%.2f", result.efficiency or 0),
+                1,1,1, 0,1,0)
+
+            GameTooltip:Show()
+
+            -- 🔑 ALSO trigger row hover manually
+            if bg:GetScript("OnEnter") then
+                bg:GetScript("OnEnter")(bg)
+            end
+        end)
+
+        effHitbox:SetScript("OnLeave", function(self)
+            GameTooltip:Hide()
+
+            -- 🔑 ALSO trigger row leave manually
+            if bg:GetScript("OnLeave") then
+                bg:GetScript("OnLeave")(bg)
+            end
+        end)
 
         -- Drop count
         local upgradePct = result.dropCount > 0 
@@ -294,16 +465,39 @@ local function BuildDungeonRows(scrollChild, results)
 
         info:SetText("|cff00ff00" .. upgradeStr .. "|r  |cffaaddff" .. gainStr .. "|r ")
 
-        AttachTooltip(bg, result)
-
-        -- Click to show details below the list
         local capturedResult = result
-        bg:SetScript("OnClick", function()
-            --local detailY = -(#results * (ROW_HEIGHT + 6) + 30)
-            --RenderDetailPanel(scrollChild, capturedResult, detailY)
+        local isPinned = false
+
+        bg:SetScript("OnEnter", function()
+            if not pinnedResult then
+                RenderDetailPanel(capturedResult)
+            end
         end)
 
-        table.insert(dungeonRows, { bg = bg, label = label, stars = starsFS, info = info })
+        bg:SetScript("OnLeave", function()
+            if not pinnedResult then
+                RenderDetailPanel(nil)
+            end
+        end)
+
+        bg:SetScript("OnClick", function()
+            -- hide pin highlight on previously pinned row
+            for _, r in ipairs(dungeonRows) do
+                if r.pinHighlight then r.pinHighlight:Hide() end
+            end
+
+            if pinnedResult == capturedResult then
+                pinnedResult = nil
+                RenderDetailPanel(nil)
+            else
+                pinnedResult = capturedResult
+                pinHighlight:Show()
+                RenderDetailPanel(capturedResult)
+            end
+        end)
+
+        table.insert(dungeonRows, { bg = bg, label = label, info = info, pinHighlight = pinHighlight })
+
 
         y = y - (ROW_HEIGHT + 6)
         if i < #results then
@@ -403,7 +597,7 @@ local function UpdateDifficultyButtonHighlights()
 end
 
 local function CreateDifficultyButtons(parent)
-    local yOffset = -30  -- Start below the title
+    local yOffset = -140  -- Start below the title
     for i, diff in ipairs(ns.DIFFICULTIES.DUNGEON) do
         local button = CreateFrame("Button", nil, parent)
         button:SetSize(120, 25)  -- Width matches old dropdown, height for readability
@@ -439,6 +633,11 @@ local function CreateDifficultyButtons(parent)
         end)
 
         table.insert(difficultyButtons, button)
+
+        -- Hide the normal difficulty button
+        if diff.id == ns.DIFFICULTIES.DUNGEON[1].id then
+            button:Hide()
+        end
     end
 
     -- Initial highlight based on current selection
@@ -475,15 +674,6 @@ function DungeonAdvisorUI:Create()
     verString:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
     verString:SetText(DungeonAdvisor.version)
 
-    -- Scan button (adjust position)
-    local scanBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    scanBtn:SetSize(90, 22)
-    scanBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -28, -26)
-    scanBtn:SetText("Rescan Gear")
-    scanBtn:SetScript("OnClick", function()
-        DungeonAdvisorUI:Refresh()
-    end)
-
     -- Sidebar for difficulty buttons (separate vertical stack)
     sidebar = CreateFrame("Frame", nil, f)
     sidebar:SetSize(130, FRAME_HEIGHT - 60)  -- Width for buttons, height to fit
@@ -496,20 +686,64 @@ function DungeonAdvisorUI:Create()
     -- Add difficulty buttons to the sidebar
     CreateDifficultyButtons(sidebar)
 
-    -- Scroll frame (positioned to the right of the sidebar)
-    local sf = CreateFrame("ScrollFrame", "DungeonAdvisorScroll", f, "UIPanelScrollFrameTemplate")
-    sf:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 10, 0)  -- Right of sidebar
-    sf:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -28, 10)
-    self.scrollFrame = sf
+    -- Rescan button below spec name in sidebar
+    local scanBtn = CreateFrame("Button", nil, sidebar, "UIPanelButtonTemplate")
+    scanBtn:SetSize(110, 22)
+    scanBtn:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 8, -0)
+    scanBtn:SetText("Rescan Gear")
+    scanBtn:SetScript("OnClick", function()
+        DungeonAdvisorUI:Refresh()
+    end)
 
-    local scrollChild = CreateFrame("Frame", "DungeonAdvisorScrollChild", sf)
-    scrollChild:SetSize(FRAME_WIDTH - 180, 800)  -- Adjust width to fit new layout
-    sf:SetScrollChild(scrollChild)
+    -- Detail panel (right side)
+    local dp = CreateFrame("Frame", nil, f)
+    dp:SetSize(DETAIL_WIDTH, FRAME_HEIGHT - 60)
+    dp:SetPoint("TOPRIGHT", f, "TOPRIGHT", -28, -50)
+    dp:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -28, 10)
+    local dpBg = dp:CreateTexture(nil, "BACKGROUND")
+    dpBg:SetAllPoints()
+    dpBg:SetColorTexture(0.05, 0.05, 0.05, 0.8)
+    detailPanel = dp
+
+    -- scrollable content inside detail panel
+    local detailSF = CreateFrame("ScrollFrame", nil, dp, "UIPanelScrollFrameTemplate")
+    detailSF:SetPoint("TOPLEFT", dp, "TOPLEFT", 0, 0)
+    detailSF:SetPoint("BOTTOMRIGHT", dp, "BOTTOMRIGHT", -16, 0)
+    local detailChild = CreateFrame("Frame", nil, detailSF)
+    detailChild:SetWidth(DETAIL_WIDTH - 20)
+    detailChild:SetHeight(800)
+    detailChild:EnableMouse(true)
+    detailChild:SetHyperlinksEnabled(true)
+    detailChild:SetScript("OnHyperlinkEnter", function(self, link, text)
+        GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+        GameTooltip:SetHyperlink(link)
+        GameTooltip:Show()
+        end)
+
+    detailChild:SetScript("OnHyperlinkLeave", function()
+        GameTooltip:Hide()
+    end)
+    detailSF:SetScrollChild(detailChild)
+    detailScrollChild = detailChild
+
+    -- List frame (now after dp exists so the anchor is valid)
+    local listFrame = CreateFrame("Frame", "DungeonAdvisorList", f)
+    listFrame:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 10, 0)
+    listFrame:SetPoint("BOTTOMRIGHT", dp, "BOTTOMLEFT", -8, 0)
 
     f:Hide()
+    RenderDetailPanel(nil)
 
     self.frame       = f
-    self.scrollChild = scrollChild
+    self.scrollFrame = listFrame
+    self.scrollChild = listFrame
+
+    f:Hide()
+    RenderDetailPanel(nil)
+
+    self.frame       = f
+    self.scrollFrame = listFrame  -- keep same reference name so RebuildScrollChild still works
+    self.scrollChild = listFrame
 end
 
 local specString
@@ -517,10 +751,18 @@ function DungeonAdvisorUI:UpdateSpecInfo()
     if not self.frame then return end
     if not specString then
         specString = sidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        specString:SetPoint("TOP", sidebar, "TOP", 0, 0)
+        specString:SetPoint("TOP", sidebar, "TOP", 0, -26)
         specString:SetJustifyH("CENTER")
+
+        CreateStatInputs(sidebar)
     end
+
     specString:SetText(string.format("%s %s", ns.state.selectedSpecName, ns.state.selectedClassName))
+
+    local weights = DungeonAdvisorCalc:GetSpecWeights()
+    for stat, box in pairs(statInputs) do
+        box:SetText(string.format("%.2f", weights[stat] or 1))
+    end
 end
 
 function DungeonAdvisorUI:Refresh()

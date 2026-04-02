@@ -87,9 +87,27 @@ local MULTI_SLOT_LABELS = {
 }
 
 -- Get the stat weight table for the current player spec
-local function GetSpecWeights()
+function DungeonAdvisorCalc:GetSpecWeights()
     local key = ns.state.selectedSpecID .. "_" .. ns.state.selectedSpecIndex
-    return STAT_WEIGHTS[key] or DEFAULT_WEIGHTS
+    --See if the DB has custom weights for this spec, otherwise return defaults
+    if DungeonAdvisorDB.weights[key] then
+        return DungeonAdvisorDB.weights[key]
+    else
+        return STAT_WEIGHTS[key] or DEFAULT_WEIGHTS
+    end
+end
+
+function DungeonAdvisorCalc:SetStatWeight(stat, value)
+    local key = ns.state.selectedSpecID .. "_" .. ns.state.selectedSpecIndex
+    local weights = DungeonAdvisorCalc:GetSpecWeights()
+    weights[key][stat] = value
+    --Update saved weights if they don't match default of current spec wights
+    if weights[key] != STAT_WEIGHTS[key] then
+        DungeonAdvisorDB.weights[key] = weights[key]
+    else
+        --They match default, just delete custom weights to save space
+        DungeonAdvisorDB.weights[key] = nil
+    end
 end
 
 -- Handle weapons separately
@@ -252,7 +270,7 @@ end
         upgradeDetails - list of { slot, label, itemName, currentIlvl, dropIlvl, gain, stats, fromClient }
 ]]
 function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
-    local weights = GetSpecWeights()
+    local weights = DungeonAdvisorCalc:GetSpecWeights()
 
     -- Shared cache for stat scores within this scoring pass
     local scoreCache = {}
@@ -389,6 +407,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                     slot        = bestCurrent.key,
                     label       = displayLabel,
                     itemName    = drop.name,
+                    itemLink    = drop.itemLink,
                     currentIlvl = bestCurrent.ilvl,
                     dropIlvl    = drop.ilvl,
                     gain        = gain,
@@ -487,7 +506,7 @@ function DungeonAdvisorCalc:RankDungeons()
                             name       = item.name or itemName,
                             ilvl       = itemLevel,
                             itemID     = item.itemID,
-                            itemLink   = itemLink or item.itemLink,
+                            itemLink   = item.itemLink,
                             itemType  = itemType,
                             itemSubType = itemSubType,
                         })
@@ -499,7 +518,20 @@ function DungeonAdvisorCalc:RankDungeons()
         if #drops > 0 then
             local score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore = self:CalculateDungeonScore(drops, playerGear)
             local avgStatScore = upgradeCount > 0 and (totalStatScore / upgradeCount) or 0
+            local baseValue = (#drops > 0) and (totalIlvlGain / #drops) or 0
+            local statMultiplier = 1 + avgStatScore * 0.2
+            
+            local weights = ns:GetStatWeights()
+
+            score =
+                (crit or 0)    * weights.crit +
+                (haste or 0)   * weights.haste +
+                (mastery or 0) * weights.mastery +
+                (vers or 0)    * weights.vers
+            
+            
             local efficiency = (totalIlvlGain / #drops) * (1 + avgStatScore * 0.2)
+
             table.insert(results, {
                 name           = dungeonEntry.name,
                 score          = score,
@@ -507,6 +539,9 @@ function DungeonAdvisorCalc:RankDungeons()
                 totalIlvlGain  = totalIlvlGain,
                 efficiency     = efficiency,
                 dropCount      = #drops,
+                avgStatScore   = avgStatScore,
+                baseValue      = baseValue,
+                statMultiplier = statMultiplier,
                 upgradeDetails = upgradeDetails,
             })
         end
