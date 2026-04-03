@@ -2,9 +2,11 @@
 --add filter for champ vs hero upgrades
 -- add filter for tier set slot track upgrades
 -- trinket info not showing
--- make secondary stat breakdown more useful somehow
--- todo color the secondary stats detailed text per item based on the stat weights. the ABSOLUTE BEST state weight is green
-    -- (100% in the highest weight) compared to the lowest stat is red (100% in the lowest weight). This way you can easily see which item has better secondary stats even if the overall score is close. Maybe also add the actual score number for each item in the details text?
+-- make the efficiency calc be simpler and be some combination of ilvl upgrades percent and total level, and also stat upgrades chances
+-- make stat upgrades appear in the detailed into panel too. all loot there that is either ilvl or stat upgrade should show there
+-- only show green plus if it's an stat upgrade, dont show red minus
+-- also make sure header says stat upgrades too in the details panel
+
 
 local addonName, ns = ...
 
@@ -93,7 +95,7 @@ end
 
 -- Get the stat weight table for the current player spec
 function ns:GetSpecWeights()
-    local key = ns.state.selectedSpecID .. "_" .. ns.state.selectedSpecIndex
+    local key = ns.state.selectedClassName:upper() .. "_" .. ns.state.selectedSpecIndex
     if not DungeonAdvisorDB.weights then
         DungeonAdvisorDB.weights = {}
     end
@@ -105,16 +107,35 @@ function ns:GetSpecWeights()
     end
 end
 
+local function TablesEqual(a, b)
+    if a == b then return true end
+    if not a or not b then return false end
+    for k, v in pairs(a) do
+        if b[k] ~= v then return false end
+    end
+    for k, v in pairs(b) do
+        if a[k] ~= v then return false end
+    end
+    return true
+end
+
 function ns:SetStatWeight(stat, value)
-    local key = ns.state.selectedSpecID .. "_" .. ns.state.selectedSpecIndex
-    local weights = ns:GetSpecWeights()
-    print(string.format("Setting weight for %s %s to %.2f", key, stat, value))
-    weights[key][stat] = value
-    --Update saved weights if they don't match default of current spec wights
-    if weights[key] ~= DungeonAdvisorCalc.STAT_WEIGHTS[key] then
-        DungeonAdvisorDB.weights[key] = weights[key]
-    else
-        --They match default, just delete custom weights to save space
+    local key = ns.state.selectedClassName:upper() .. "_" .. ns.state.selectedSpecIndex
+
+    -- ensure we have a custom weights table in the DB to write to
+    -- copy defaults if no custom weights exist yet so we don't mutate STAT_WEIGHTS
+    if not DungeonAdvisorDB.weights[key] then
+        local defaults = DungeonAdvisorCalc.STAT_WEIGHTS[key] or DungeonAdvisorCalc.DEFAULT_WEIGHTS
+        DungeonAdvisorDB.weights[key] = {}
+        for k, v in pairs(defaults) do
+            DungeonAdvisorDB.weights[key][k] = v
+        end
+    end
+
+    DungeonAdvisorDB.weights[key][stat] = value
+
+    -- if it now matches defaults, drop the custom entry to save space
+    if TablesEqual(DungeonAdvisorDB.weights[key], DungeonAdvisorCalc.STAT_WEIGHTS[key]) then
         DungeonAdvisorDB.weights[key] = nil
     end
 end
@@ -139,6 +160,7 @@ function DungeonAdvisor:GetEquippedGear()
                 name  = GetItemInfo(itemLink) or "Unknown",
                 label = slotInfo.label,
                 secondaryStatScore = ns:SecondaryStatScore(stats, weights),
+                stats = stats
             }
         else
             gear[key] = { ilvl = 0, secondaryStatScore = 0,name = "Empty", label = slotInfo.label }
@@ -156,6 +178,7 @@ function DungeonAdvisor:GetEquippedGear()
                 name  = GetItemInfo(itemLink) or "Unknown",
                 label = extraInfo.label,
                 secondaryStatScore = ns:SecondaryStatScore(stats, weights),
+                stats = stats
             }
         else
             gear[extraName] = { ilvl = 0, secondaryStatScore = 0, name = "Empty", label = extraInfo.label }

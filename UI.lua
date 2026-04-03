@@ -4,7 +4,7 @@ local addonName, ns = ...
 
 DungeonAdvisorUI = {}
 
-local FRAME_WIDTH  = 1100
+local FRAME_WIDTH  = 1130
 local FRAME_HEIGHT = 460
 local ROW_HEIGHT   = 26
 local DETAIL_WIDTH = 330
@@ -126,7 +126,7 @@ local function CreateStatInputs(parent)
         { key = "crit",        label = "Crit" },
         { key = "haste",       label = "Haste" },
         { key = "mastery",     label = "Mastery" },
-        { key = "versatility", label = "Vers" },
+        { key = "versatility", label = "Versatility" },
     }
 
     local startY = -50  -- below spec text
@@ -212,6 +212,7 @@ end
 local function RenderDetailPanel(result)
     ClearDetailPanel()
     if not detailScrollChild then return end
+    local weights = ns:GetSpecWeights()
 
     if not result then
         AddLine("\n\n\n\n\n\n\n\n\n\n\nHover over a dungeon to preview details", 0.6, 0.6, 0.6)
@@ -261,7 +262,6 @@ local function RenderDetailPanel(result)
 
         if detail.stats then
             local s = detail.stats
-            local weights = ns:GetSpecWeights()
             local parts = {}
 
             local statDefs = {
@@ -278,26 +278,25 @@ local function RenderDetailPanel(result)
             end
 
             if #parts > 0 then
-                -- get match color for the whole item's stat distribution
-                local r, g, b = StatMatchColor(s, weights)
-                local matchHex = string.format("|cff%02x%02x%02x", 
-                    math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
+                local indicator = ""
+                if detail.stats and weights then
+                    -- normalize weights to proportions
+                    local totalWeight = 0
+                    for _, w in pairs(weights) do totalWeight = totalWeight + w end
 
-                -- score change indicator
-                local scoreLine = ""
-                if detail.currentSecondaryStatScore and detail.secondaryStatScore then
-                    local delta = detail.secondaryStatScore - detail.currentSecondaryStatScore
-                    if delta > 0 then
-                        scoreLine = string.format("  |cff00ff44(+%.0f score)|r", delta)
-                    elseif delta < 0 then
-                        scoreLine = string.format("  |cffff4444(%.0f score)|r", delta)
+                    local dropRatio = ns:StatRatioScore(detail.stats)
+                    local currentRatio = ns:StatRatioScore(detail.currentStats)
+
+                    if math.abs(dropRatio - currentRatio) < 0.01 then
+                        indicator = ""
+                    elseif dropRatio > currentRatio then
+                        indicator = "|cff00ffff+|r "
+                    elseif dropRatio < currentRatio then
+                        indicator = "|cffff44ff-|r " 
                     end
                 end
 
-                AddLine(
-                    matchHex .. "● |r" .. table.concat(parts, " · ") .. scoreLine,
-                    1, 1, 1, 14, "small"
-                )
+                AddLine(indicator .. table.concat(parts, " · "), 1, 1, 1, 14, "small")
             end
         end
     end
@@ -372,19 +371,19 @@ local function BuildDungeonRows(scrollChild, results)
 
     local headerDrops = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     headerDrops:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 340, headerY)
-    headerDrops:SetText("% Upgrades")
+    headerDrops:SetText("iLvl Upgrades")
     headerDrops:SetTextColor(1, 1, 1)
     AttachHeaderTooltip(headerDrops, scrollChild,
         "% Upgrades",
         "How many of this dungeon's drops are an upgrade for you.\n(Upgrades / Total drops).")
 
-    local headerInfo = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    headerInfo:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -20, headerY)
-    headerInfo:SetText("Upgrades / iLvl")
-    headerInfo:SetTextColor(1, 1, 1)
-    AttachHeaderTooltip(headerInfo, scrollChild,
-        "Upgrades / iLvl",
-        "Number of upgrade slots found in this dungeon, and the total cumulative ilvl gain across all of them.")
+    local headerStatUpgrades = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    headerStatUpgrades:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 510, headerY)
+    headerStatUpgrades:SetText("Stat Upgrades")
+    headerStatUpgrades:SetTextColor(1, 1, 1)
+    AttachHeaderTooltip(headerStatUpgrades, scrollChild,
+        "Stat Upgrades",
+        "How many drops have a better secondary stat distribution than your currently equipped item.\n(Stat Upgrades / Total drops).")
 
     local y = headerY - 20
     for i, result in ipairs(results) do
@@ -489,14 +488,14 @@ local function BuildDungeonRows(scrollChild, results)
             end
         end)
 
-        -- Drop count
+        -- ilvl upgrades
         local upgradePct = result.dropCount > 0 
             and math.floor((result.upgradeCount / result.dropCount) * 100) 
             or 0
 
         local dropsText = bg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        dropsText:SetPoint("LEFT", bg, "LEFT", 350, 0)
-        dropsText:SetWidth(90)
+        dropsText:SetPoint("LEFT", bg, "LEFT", 340, 0)
+        dropsText:SetWidth(140)
         dropsText:SetJustifyH("LEFT")
 
         -- Color the percentage: green if high, yellow if mid, red if low
@@ -508,16 +507,28 @@ local function BuildDungeonRows(scrollChild, results)
         else
             pctColor = "|cffff4444"
         end
-        dropsText:SetText(pctColor .. upgradePct .. "%|r" .. " (" .. result.upgradeCount .. "/" .. result.dropCount .. ") ")
+        local gainStr    = "|cFFAAAAFF+" .. result.totalIlvlGain .. " ilvl|r"
+        dropsText:SetText(pctColor .. upgradePct .. "%|r" .. " (" .. result.upgradeCount .. "/" .. result.dropCount .. ") " .. gainStr)
 
-        -- Info: upgrades + ilvl
-        local info = bg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        info:SetPoint("RIGHT", bg, "RIGHT", -8, 0)
-        info:SetJustifyH("RIGHT")
-        local upgradeStr = result.upgradeCount .. " slot" .. (result.upgradeCount == 1 and "" or "s")
-        local gainStr    = "+" .. result.totalIlvlGain .. " ilvl"
+        local statUpgradePct = result.dropCount > 0
+            and math.floor(((result.statUpgradeCount or 0) / result.dropCount) * 100)
+            or 0
 
-        info:SetText("|cff00ff00" .. upgradeStr .. "|r  |cffaaddff" .. gainStr .. "|r ")
+        local statUpgradeText = bg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        statUpgradeText:SetPoint("LEFT", bg, "LEFT", 510, 0)
+        statUpgradeText:SetWidth(90)
+        statUpgradeText:SetJustifyH("LEFT")
+
+        local statPctColor
+        if statUpgradePct >= 50 then
+            statPctColor = "|cff00ff00"
+        elseif statUpgradePct >= 25 then
+            statPctColor = "|cffFFD700"
+        else
+            statPctColor = "|cffff4444"
+        end
+        statUpgradeText:SetText(statPctColor .. statUpgradePct .. "%|r" .. 
+            " (" .. (result.statUpgradeCount or 0) .. "/" .. result.dropCount .. ")")
 
         local capturedResult = result
         local isPinned = false
