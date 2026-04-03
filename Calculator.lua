@@ -17,7 +17,7 @@ local MIN_UPGRADE_DELTA = 1
 -- Stat weights per spec: how much each secondary stat matters (0.0 - 1.0).
 -- Rough SimC-inspired defaults. Players can adjust these in a future settings panel.
 -- Key format: "CLASS_SPECINDEX"
-local STAT_WEIGHTS = {
+DungeonAdvisorCalc.STAT_WEIGHTS = {
     -- Warrior
     WARRIOR_1 = { crit=1.0, haste=0.7, mastery=0.8, versatility=0.5 }, -- Arms
     WARRIOR_2 = { crit=0.8, haste=1.0, mastery=0.6, versatility=0.5 }, -- Fury
@@ -73,7 +73,7 @@ local STAT_WEIGHTS = {
 }
 
 -- Default weights for unknown specs
-local DEFAULT_WEIGHTS = { crit=0.8, haste=0.8, mastery=0.8, versatility=0.8 }
+DungeonAdvisorCalc.DEFAULT_WEIGHTS = { crit=0.8, haste=0.8, mastery=0.8, versatility=0.8 }
 
 -- define which slots can have duplicates
 local MULTI_SLOTS = {
@@ -86,29 +86,13 @@ local MULTI_SLOT_LABELS = {
     TRINKET = "Trinket",
 }
 
--- Get the stat weight table for the current player spec
-function DungeonAdvisorCalc:GetSpecWeights()
-    local key = ns.state.selectedSpecID .. "_" .. ns.state.selectedSpecIndex
-    --See if the DB has custom weights for this spec, otherwise return defaults
-    if DungeonAdvisorDB.weights[key] then
-        return DungeonAdvisorDB.weights[key]
-    else
-        return STAT_WEIGHTS[key] or DEFAULT_WEIGHTS
-    end
-end
-
-function DungeonAdvisorCalc:SetStatWeight(stat, value)
-    local key = ns.state.selectedSpecID .. "_" .. ns.state.selectedSpecIndex
-    local weights = DungeonAdvisorCalc:GetSpecWeights()
-    weights[key][stat] = value
-    --Update saved weights if they don't match default of current spec wights
-    if weights[key] != STAT_WEIGHTS[key] then
-        DungeonAdvisorDB.weights[key] = weights[key]
-    else
-        --They match default, just delete custom weights to save space
-        DungeonAdvisorDB.weights[key] = nil
-    end
-end
+-- Map weight keys to WoW stat keys
+DungeonAdvisorCalc.STAT_KEY_MAP = {
+    crit = "ITEM_MOD_CRIT_RATING_SHORT",
+    haste = "ITEM_MOD_HASTE_RATING_SHORT", 
+    mastery = "ITEM_MOD_MASTERY_RATING_SHORT",
+    versatility = "ITEM_MOD_VERSATILITY"
+}
 
 -- Handle weapons separately
 local function ScoreWeaponLoadout(drops, playerGear, weights)
@@ -174,6 +158,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
     -- Always show ALL upgrades regardless of which loadout wins scoring
     for _, drop in ipairs(all2H) do
         local gain = drop.ilvl - math.max(currentMHilvl, currentOHilvl)
+        local stats = ns.GetItemStatsCompat(drop.itemLink)
         if gain >= MIN_UPGRADE_DELTA then
             table.insert(upgrades, {
                 slot        = "MAINHAND",
@@ -183,6 +168,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
                 dropIlvl    = drop.ilvl,
                 gain        = gain,
                 stats       = ns.GetItemStatsCompat(drop.itemLink),
+                currentSecondaryStatScore = ns:SecondaryStatScore(stats, weights),
                 fromClient  = true,
             })
         end
@@ -190,6 +176,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
 
     for _, drop in ipairs(all1H) do
         local gain = drop.ilvl - currentMHilvl
+        local stats = ns.GetItemStatsCompat(drop.itemLink)
         if gain >= MIN_UPGRADE_DELTA then
             table.insert(upgrades, {
                 slot        = "MAINHAND",
@@ -199,6 +186,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
                 dropIlvl    = drop.ilvl,
                 gain        = gain,
                 stats       = ns.GetItemStatsCompat(drop.itemLink),
+                currentSecondaryStatScore = ns:SecondaryStatScore(stats, weights),
                 fromClient  = true,
             })
         end
@@ -209,6 +197,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
         -- combo would beat the current 2H, so compare against 2H ilvl
         local compareIlvl = playerUsing2H and currentMHilvl or currentOHilvl
         local gain = drop.ilvl - compareIlvl
+        local stats = ns.GetItemStatsCompat(drop.itemLink)
         if gain >= MIN_UPGRADE_DELTA then
             table.insert(upgrades, {
                 slot        = "OFFHAND",
@@ -218,6 +207,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
                 dropIlvl    = drop.ilvl,
                 gain        = gain,
                 stats       = ns.GetItemStatsCompat(drop.itemLink),
+                currentSecondaryStatScore = ns:SecondaryStatScore(stats, weights),
                 fromClient  = true,
             })
         end
@@ -240,15 +230,7 @@ local function StatScore(drop, weights)
     if not stats then return 0 end
     local total = 0
     local maxPossible = 0
-    
-    -- Map weight keys to WoW stat keys
-    local statKeyMap = {
-        crit = "ITEM_MOD_CRIT_RATING_SHORT",
-        haste = "ITEM_MOD_HASTE_RATING_SHORT", 
-        mastery = "ITEM_MOD_MASTERY_RATING_SHORT",
-        versatility = "ITEM_MOD_VERSATILITY"
-    }
-    
+
     for weightKey, weight in pairs(weights) do
         local wowStatKey = statKeyMap[weightKey]
         if wowStatKey then
@@ -261,6 +243,15 @@ local function StatScore(drop, weights)
     return math.min(total / maxPossible, 1.0)
 end
 
+function ns:SecondaryStatScore(stats, weights)
+    if not stats then return 0 end
+    return
+        (stats["ITEM_MOD_CRIT_RATING_SHORT"] or 0)    * (weights.crit or 0) +
+        (stats["ITEM_MOD_HASTE_RATING_SHORT"] or 0)   * (weights.haste or 0) +
+        (stats["ITEM_MOD_MASTERY_RATING_SHORT"] or 0) * (weights.mastery or 0) +
+        (stats["ITEM_MOD_VERSATILITY"] or 0)    * (weights.versatility or 0)
+end
+
 --[[
     CalculateDungeonScore(dungeonDrops, playerGear)
     Returns:
@@ -270,7 +261,7 @@ end
         upgradeDetails - list of { slot, label, itemName, currentIlvl, dropIlvl, gain, stats, fromClient }
 ]]
 function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
-    local weights = DungeonAdvisorCalc:GetSpecWeights()
+    local weights = ns:GetSpecWeights()
 
     -- Shared cache for stat scores within this scoring pass
     local scoreCache = {}
@@ -316,6 +307,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     local upgradeCount   = 0
     local totalIlvlGain  = 0
     local totalStatScore = 0
+    local totalSecondaryStatScore = 0
     local upgradeDetails = {}
 
     -- Group all drops by slot (no trimming here)
@@ -341,10 +333,12 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
         for i = 1, maxCount do
             local gearKey = maxCount > 1 and (slot .. i) or slot
             local current = playerGear[gearKey]
+            --print("Gear score: " .. playerGear[gearKey].secondaryStatScore)
             table.insert(currentPieces, {
                 key   = gearKey,
                 ilvl  = current and current.ilvl or 0,
                 label = current and current.label or gearKey,
+                secondaryStatScore = current.secondaryStatScore,
             })
         end
         table.sort(currentPieces, function(a, b) return a.ilvl < b.ilvl end)
@@ -363,9 +357,13 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                 if not usedDrops[dropIdx] then
                     local gain = drop.ilvl - current.ilvl
                     if gain >= MIN_UPGRADE_DELTA then
+                        local stats = ns.GetItemStatsCompat(drop.itemLink)
                         local statScore = CachedStatScore(drop)
+                        local secondaryScore = ns:SecondaryStatScore(stats, weights)
+
                         totalIlvlGain  = totalIlvlGain + gain
                         totalStatScore = totalStatScore + statScore
+                        totalSecondaryStatScore = totalSecondaryStatScore + secondaryScore
                         usedDrops[dropIdx] = true
                         usedSlots[current.key] = true
                     end
@@ -403,15 +401,18 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                 local stats = ns.GetItemStatsCompat(drop.itemLink)
                 -- For multi-slots (rings/trinkets), show generic label instead of "Trinket 1"/"Ring 1"
                 local displayLabel = MULTI_SLOT_LABELS[slot] or bestCurrent.label
+                --print("BestCurrent: " .. bestCurrent.secondaryStatScore)
                 table.insert(upgradeDetails, {
                     slot        = bestCurrent.key,
                     label       = displayLabel,
                     itemName    = drop.name,
                     itemLink    = drop.itemLink,
                     currentIlvl = bestCurrent.ilvl,
+                    currentSecondaryStatScore = bestCurrent.secondaryStatScore,
                     dropIlvl    = drop.ilvl,
                     gain        = gain,
                     stats       = stats,
+                    secondaryStatScore = ns:SecondaryStatScore(stats, weights),
                     fromClient  = true,
                 })
             end
@@ -420,8 +421,15 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
 
     local weaponUpgrades, weaponScoringGain = ScoreWeaponLoadout(weaponDrops, playerGear, weights)
     for _, wu in ipairs(weaponUpgrades) do
-        upgradeCount  = upgradeCount + 1  -- count each visible upgrade
-        totalStatScore = totalStatScore + StatScore({ itemLink = wu.itemLink }, weights)
+        upgradeCount  = upgradeCount + 1
+
+        local statScore = StatScore({ itemLink = wu.itemLink }, weights)
+        local secondaryScore = ns:SecondaryStatScore(ns.GetItemStatsCompat(wu.itemLink), weights)
+
+        totalStatScore = totalStatScore + statScore
+        totalSecondaryStatScore = totalSecondaryStatScore + secondaryScore
+
+        wu.secondaryStatScore = secondaryScore
         table.insert(upgradeDetails, wu)
     end
     totalIlvlGain = totalIlvlGain + weaponScoringGain  -- but only score the best loadout
@@ -440,7 +448,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     -- Sort upgrades: biggest ilvl gain first
     table.sort(upgradeDetails, function(a, b) return a.gain > b.gain end)
 
-    return score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore
+    return score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, totalSecondaryStatScore
 end
 
 --[[
@@ -516,18 +524,10 @@ function DungeonAdvisorCalc:RankDungeons()
         end
         --print(string.format("[DungeonAdvisor] %s: found %d drops for %s", selectedDiff, #drops, dungeonEntry.name or "unknown"))
         if #drops > 0 then
-            local score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore = self:CalculateDungeonScore(drops, playerGear)
+            local score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, totalSecondaryStatScore = self:CalculateDungeonScore(drops, playerGear)
             local avgStatScore = upgradeCount > 0 and (totalStatScore / upgradeCount) or 0
             local baseValue = (#drops > 0) and (totalIlvlGain / #drops) or 0
-            local statMultiplier = 1 + avgStatScore * 0.2
-            
-            local weights = ns:GetStatWeights()
-
-            score =
-                (crit or 0)    * weights.crit +
-                (haste or 0)   * weights.haste +
-                (mastery or 0) * weights.mastery +
-                (vers or 0)    * weights.vers
+            local statMultiplier = 1 + totalSecondaryStatScore * 0.2
             
             
             local efficiency = (totalIlvlGain / #drops) * (1 + avgStatScore * 0.2)

@@ -62,41 +62,53 @@ local function CreateDivider(parent, yOffset)
     return line
 end
 
--- Tooltip for a dungeon row
-local function AttachTooltip(frame, dungeonResult)
-    frame:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:AddLine(dungeonResult.name, 1, 0.82, 0)
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddDoubleLine("Upgrade slots:", dungeonResult.upgradeCount, 1,1,1, 0.2,1,0.2)
-        GameTooltip:AddDoubleLine("Total ilvl gain:", "+" .. dungeonResult.totalIlvlGain, 1,1,1, 0.2,1,0.2)
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("Best upgrades:", 0.9, 0.7, 0.1)
-        local shown = 0
-        for _, detail in ipairs(dungeonResult.upgradeDetails) do
-            local slotText = string.format("  [%s]", detail.label)
-            local gainText = string.format("%s  |cff00ff44+%d ilvl|r", detail.itemName, detail.gain)
-            GameTooltip:AddDoubleLine(slotText, gainText, 0.8,0.8,0.8, 1,1,1)
+local function StatMatchColor(stats, weights)
+    if not stats or not weights then return 1, 1, 1 end
 
-            -- Secondary stats line
-            if detail.stats then
-                local s = detail.stats
-                local statParts = {}
-                if s["ITEM_MOD_CRIT_RATING_SHORT"] then table.insert(statParts, string.format("|cffff4444%d Crit|r", s["ITEM_MOD_CRIT_RATING_SHORT"])) end
-                if s["ITEM_MOD_HASTE_RATING_SHORT"] then table.insert(statParts, string.format("|cffFFD700%d Haste|r", s["ITEM_MOD_HASTE_RATING_SHORT"])) end
-                if s["ITEM_MOD_MASTERY_RATING_SHORT"] then table.insert(statParts, string.format("|cff44aaFF%d Mastery|r", s["ITEM_MOD_MASTERY_RATING_SHORT"])) end
-                if s["ITEM_MOD_VERSATILITY"] then table.insert(statParts, string.format("|cff44ff88%d Vers|r", s["ITEM_MOD_VERSATILITY"])) end
-                if #statParts > 0 then
-                    GameTooltip:AddLine("     " .. table.concat(statParts, "  "))
-                end
-            end
-            shown = shown + 1
-        end
-        GameTooltip:Show()
-    end)
-    frame:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
+    -- normalize weights to proportions
+    local totalWeight = 0
+    for _, w in pairs(weights) do totalWeight = totalWeight + w end
+    if totalWeight == 0 then return 1, 1, 1 end
+
+    local weightProp = {}
+    for key, w in pairs(weights) do
+        weightProp[key] = w / totalWeight
+    end
+
+    -- normalize item stats to proportions
+    local totalStats = 0
+    for shortKey, _ in pairs(weights) do
+        local wowKey = DungeonAdvisorCalc.STAT_KEY_MAP[shortKey]
+        if wowKey then totalStats = totalStats + (stats[wowKey] or 0) end
+    end
+
+    if totalStats == 0 then return 0.6, 0.6, 0.6 end  -- no secondary stats, gray
+
+    local statProp = {}
+    for shortKey, _ in pairs(weights) do
+        local wowKey = DungeonAdvisorCalc.STAT_KEY_MAP[shortKey]
+        statProp[shortKey] = wowKey and ((stats[wowKey] or 0) / totalStats) or 0
+    end
+
+    -- similarity: 1 - average absolute difference between proportions
+    -- perfect match = 1.0, complete mismatch = 0.0
+    local totalDiff = 0
+    for key, _ in pairs(weights) do
+        totalDiff = totalDiff + math.abs((statProp[key] or 0) - (weightProp[key] or 0))
+    end
+    -- totalDiff ranges 0-2 (sum of absolute differences of proportions)
+    local similarity = 1 - (totalDiff / 2)
+
+    -- map similarity to green→yellow→red
+    if similarity >= 0.5 then
+        -- green to yellow: similarity 1.0=green, 0.5=yellow
+        local t = (similarity - 0.5) / 0.5
+        return 1 - t, 1, 0  -- r goes 1→0, g stays 1
+    else
+        -- yellow to red: similarity 0.5=yellow, 0.0=red
+        local t = similarity / 0.5
+        return 1, t, 0  -- r stays 1, g goes 1→0
+    end
 end
 
 -- Build the detail panel shown below the dungeon list
@@ -111,10 +123,10 @@ local statInputs = {}
 
 local function CreateStatInputs(parent)
     local stats = {
-        { key = "crit",    label = "Crit" },
-        { key = "haste",   label = "Haste" },
-        { key = "mastery", label = "Mastery" },
-        { key = "vers",    label = "Vers" },
+        { key = "crit",        label = "Crit" },
+        { key = "haste",       label = "Haste" },
+        { key = "mastery",     label = "Mastery" },
+        { key = "versatility", label = "Vers" },
     }
 
     local startY = -50  -- below spec text
@@ -137,7 +149,7 @@ local function CreateStatInputs(parent)
         editBox:SetScript("OnEnterPressed", function(self)
             local val = tonumber(self:GetText())
             if val then
-                DungeonAdvisorCalc:SetStatWeight(stat.key, val)
+                ns:SetStatWeight(stat.key, val)
                 DungeonAdvisorUI:RefreshDungeonList()
             end
             self:ClearFocus()
@@ -235,15 +247,57 @@ local function RenderDetailPanel(result)
         -- AddItemLinkLine(detail.itemLink, detail.itemName, 14)
 
         -- line 2: secondary stats only if present
+        -- if detail.stats then
+        --     local s = detail.stats
+        --     local parts = {}
+        --     if s["ITEM_MOD_CRIT_RATING_SHORT"]    then table.insert(parts, string.format("|cffff4444Crit %d|r",    s["ITEM_MOD_CRIT_RATING_SHORT"]))    end
+        --     if s["ITEM_MOD_HASTE_RATING_SHORT"]   then table.insert(parts, string.format("|cffFFD700Haste %d|r",   s["ITEM_MOD_HASTE_RATING_SHORT"]))   end
+        --     if s["ITEM_MOD_MASTERY_RATING_SHORT"] then table.insert(parts, string.format("|cff44aaFFMastery %d|r", s["ITEM_MOD_MASTERY_RATING_SHORT"])) end
+        --     if s["ITEM_MOD_VERSATILITY"]          then table.insert(parts, string.format("|cff44ff88Vers %d|r",    s["ITEM_MOD_VERSATILITY"]))          end
+        --     if #parts > 0 then
+        --         AddLine("  " .. table.concat(parts, " · ") .. " |cff888888(" .. detail.currentSecondaryStatScore .. " -> " .. detail.secondaryStatScore .. ")|r", 1, 1, 1, 8, "small")
+        --     end
+        -- end
+
         if detail.stats then
             local s = detail.stats
+            local weights = ns:GetSpecWeights()
             local parts = {}
-            if s["ITEM_MOD_CRIT_RATING_SHORT"]    then table.insert(parts, string.format("|cffff4444Crit %d|r",    s["ITEM_MOD_CRIT_RATING_SHORT"]))    end
-            if s["ITEM_MOD_HASTE_RATING_SHORT"]   then table.insert(parts, string.format("|cffFFD700Haste %d|r",   s["ITEM_MOD_HASTE_RATING_SHORT"]))   end
-            if s["ITEM_MOD_MASTERY_RATING_SHORT"] then table.insert(parts, string.format("|cff44aaFFMastery %d|r", s["ITEM_MOD_MASTERY_RATING_SHORT"])) end
-            if s["ITEM_MOD_VERSATILITY"]          then table.insert(parts, string.format("|cff44ff88Vers %d|r",    s["ITEM_MOD_VERSATILITY"]))          end
+
+            local statDefs = {
+                { key = "ITEM_MOD_CRIT_RATING_SHORT",    label = "Crit",    color = "|cffff4444" },
+                { key = "ITEM_MOD_HASTE_RATING_SHORT",   label = "Haste",   color = "|cffFFD700" },
+                { key = "ITEM_MOD_MASTERY_RATING_SHORT", label = "Mastery", color = "|cff44aaFF" },
+                { key = "ITEM_MOD_VERSATILITY",          label = "Vers",    color = "|cff44ff88" },
+            }
+
+            for _, stat in ipairs(statDefs) do
+                if s[stat.key] then
+                    table.insert(parts, string.format("%s%s %d|r", stat.color, stat.label, s[stat.key]))
+                end
+            end
+
             if #parts > 0 then
-                AddLine("  " .. table.concat(parts, " · "), 1, 1, 1, 8, "small")
+                -- get match color for the whole item's stat distribution
+                local r, g, b = StatMatchColor(s, weights)
+                local matchHex = string.format("|cff%02x%02x%02x", 
+                    math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
+
+                -- score change indicator
+                local scoreLine = ""
+                if detail.currentSecondaryStatScore and detail.secondaryStatScore then
+                    local delta = detail.secondaryStatScore - detail.currentSecondaryStatScore
+                    if delta > 0 then
+                        scoreLine = string.format("  |cff00ff44(+%.0f score)|r", delta)
+                    elseif delta < 0 then
+                        scoreLine = string.format("  |cffff4444(%.0f score)|r", delta)
+                    end
+                end
+
+                AddLine(
+                    matchHex .. "● |r" .. table.concat(parts, " · ") .. scoreLine,
+                    1, 1, 1, 14, "small"
+                )
             end
         end
     end
@@ -759,7 +813,7 @@ function DungeonAdvisorUI:UpdateSpecInfo()
 
     specString:SetText(string.format("%s %s", ns.state.selectedSpecName, ns.state.selectedClassName))
 
-    local weights = DungeonAdvisorCalc:GetSpecWeights()
+    local weights = ns:GetSpecWeights()
     for stat, box in pairs(statInputs) do
         box:SetText(string.format("%.2f", weights[stat] or 1))
     end

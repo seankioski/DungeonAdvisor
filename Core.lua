@@ -2,6 +2,9 @@
 --add filter for champ vs hero upgrades
 -- add filter for tier set slot track upgrades
 -- trinket info not showing
+-- make secondary stat breakdown more useful somehow
+-- todo color the secondary stats detailed text per item based on the stat weights. the ABSOLUTE BEST state weight is green
+    -- (100% in the highest weight) compared to the lowest stat is red (100% in the lowest weight). This way you can easily see which item has better secondary stats even if the overall score is close. Maybe also add the actual score number for each item in the details text?
 
 local addonName, ns = ...
 
@@ -88,8 +91,37 @@ function ns:DetectLootSpec()
     --print(string.format("|cff00ccff[DungeonAdvisor]|r Detected loot spec |cffFFD700%s %s|r.", ns.state.selectedSpecName, ns.playerClassName))
 end
 
+-- Get the stat weight table for the current player spec
+function ns:GetSpecWeights()
+    local key = ns.state.selectedSpecID .. "_" .. ns.state.selectedSpecIndex
+    if not DungeonAdvisorDB.weights then
+        DungeonAdvisorDB.weights = {}
+    end
+    --See if the DB has custom weights for this spec, otherwise return defaults
+    if DungeonAdvisorDB.weights[key] then
+        return DungeonAdvisorDB.weights[key]
+    else
+        return DungeonAdvisorCalc.STAT_WEIGHTS[key] or DungeonAdvisorCalc.DEFAULT_WEIGHTS
+    end
+end
+
+function ns:SetStatWeight(stat, value)
+    local key = ns.state.selectedSpecID .. "_" .. ns.state.selectedSpecIndex
+    local weights = ns:GetSpecWeights()
+    print(string.format("Setting weight for %s %s to %.2f", key, stat, value))
+    weights[key][stat] = value
+    --Update saved weights if they don't match default of current spec wights
+    if weights[key] ~= DungeonAdvisorCalc.STAT_WEIGHTS[key] then
+        DungeonAdvisorDB.weights[key] = weights[key]
+    else
+        --They match default, just delete custom weights to save space
+        DungeonAdvisorDB.weights[key] = nil
+    end
+end
+
 -- Returns a table of { slotName -> currentIlvl } for the player
 function DungeonAdvisor:GetEquippedGear()
+    local weights = ns:GetSpecWeights()
     local gear = {}
 
     for slotName, slotInfo in pairs(self.SLOTS) do
@@ -101,13 +133,15 @@ function DungeonAdvisor:GetEquippedGear()
 
         if itemLink then
             local ilvl = select(4, GetItemInfo(itemLink)) or 0
+            local stats = ns.GetItemStatsCompat(itemLink)
             gear[key] = {
                 ilvl  = ilvl,
                 name  = GetItemInfo(itemLink) or "Unknown",
                 label = slotInfo.label,
+                secondaryStatScore = ns:SecondaryStatScore(stats, weights),
             }
         else
-            gear[key] = { ilvl = 0, name = "Empty", label = slotInfo.label }
+            gear[key] = { ilvl = 0, secondaryStatScore = 0,name = "Empty", label = slotInfo.label }
         end
     end
 
@@ -116,13 +150,15 @@ function DungeonAdvisor:GetEquippedGear()
         local itemLink = GetInventoryItemLink("player", extraInfo.id)
         if itemLink then
             local ilvl = select(4, GetItemInfo(itemLink)) or 0
+            local stats = ns.GetItemStatsCompat(itemLink)
             gear[extraName] = {
                 ilvl  = ilvl,
                 name  = GetItemInfo(itemLink) or "Unknown",
                 label = extraInfo.label,
+                secondaryStatScore = ns:SecondaryStatScore(stats, weights),
             }
         else
-            gear[extraName] = { ilvl = 0, name = "Empty", label = extraInfo.label }
+            gear[extraName] = { ilvl = 0, secondaryStatScore = 0, name = "Empty", label = extraInfo.label }
         end
     end
 
