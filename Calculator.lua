@@ -118,18 +118,11 @@ end
 local function ScoreWeaponLoadout(drops, playerGear, weights)
     local statUpgradeCount = 0
     local MAINHAND_SLOT = 16
+    local OFFHAND_SLOT = 17
     local mhLink = GetInventoryItemLink("player", MAINHAND_SLOT)
-    local playerUsing2H = false
-    if mhLink then
-        local _, _, _, _, _, itemType, itemSubType = GetItemInfo(mhLink)
-        playerUsing2H = itemType == "Weapon" and (
-            itemSubType == "Two-Handed Swords" or
-            itemSubType == "Two-Handed Axes"   or
-            itemSubType == "Two-Handed Maces"  or
-            itemSubType == "Polearms"          or
-            itemSubType == "Staves"
-        )
-    end
+    local ohLink = GetInventoryItemLink("player", OFFHAND_SLOT)
+    local mhStats = ns.GetItemStatsCompat(mhLink)
+    local ohStats = ns.GetItemStatsCompat(ohLink)
 
     local currentMH     = playerGear["MAINHAND"]
     local currentOH     = playerGear["OFFHAND"]
@@ -149,7 +142,10 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
             drop.itemSubType == "Two-Handed Axes"   or
             drop.itemSubType == "Two-Handed Maces"  or
             drop.itemSubType == "Polearms"          or
-            drop.itemSubType == "Staves"
+            drop.itemSubType == "Staves"            or
+            drop.itemSubType == "Bows"              or
+            drop.itemSubType == "Guns"              or
+            drop.itemSubType == "Crossbows"
         )
         if is2H then
             table.insert(all2H, drop)
@@ -176,81 +172,98 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
     local upgrades = {}
     local scoringGain = 0
 
-    -- Always show ALL upgrades regardless of which loadout wins scoring
-    for _, drop in ipairs(all2H) do
-        local gain = drop.ilvl - math.max(currentMHilvl, currentOHilvl)
-        local stats = ns.GetItemStatsCompat(drop.itemLink)
-        if gain >= MIN_UPGRADE_DELTA then
+    if weaponMode == "2H" then
+        -- Always show ALL upgrades regardless of which loadout wins scoring
+        for _, drop in ipairs(all2H) do
+            local gain = math.max(drop.ilvl - math.max(currentMHilvl, currentOHilvl), 0)
+            local stats = ns.GetItemStatsCompat(drop.itemLink)
             local dropRatio = ns:StatRatioScore(stats)
-            local currentRatio = ns:StatRatioScore(bestCurrent.stats)
-            if dropRatio > currentRatio then
-                statUpgradeCount = statUpgradeCount + 1
-            end
-            table.insert(upgrades, {
-                slot        = "MAINHAND",
-                label       = currentMH and currentMH.label or "Main Hand",
-                itemName    = drop.name,
-                currentIlvl = math.max(currentMHilvl, currentOHilvl),
-                dropIlvl    = drop.ilvl,
-                gain        = gain,
-                stats       = ns.GetItemStatsCompat(drop.itemLink),
-                currentSecondaryStatScore = ns:SecondaryStatScore(stats, weights),
-                fromClient  = true,
-            })
-        end
-    end
+            local currentRatio = ns:StatRatioScore(mhStats)
+            local isStatUpgrade = dropRatio > currentRatio + 0.01
 
-    for _, drop in ipairs(all1H) do
-        local gain = drop.ilvl - currentMHilvl
-        local stats = ns.GetItemStatsCompat(drop.itemLink)
-        if gain >= MIN_UPGRADE_DELTA then
-            local dropRatio = ns:StatRatioScore(stats)
-            local currentRatio = ns:StatRatioScore(bestCurrent.stats)
-            if dropRatio > currentRatio then
+            if playerUsing2H and isStatUpgrade then
                 statUpgradeCount = statUpgradeCount + 1
             end
-            table.insert(upgrades, {
-                slot        = "MAINHAND",
-                label       = currentMH and currentMH.label or "Main Hand",
-                itemName    = drop.name,
-                currentIlvl = currentMHilvl,
-                dropIlvl    = drop.ilvl,
-                gain        = gain,
-                stats       = ns.GetItemStatsCompat(drop.itemLink),
-                currentSecondaryStatScore = ns:SecondaryStatScore(stats, weights),
-                fromClient  = true,
-            })
+            
+            if gain >= MIN_UPGRADE_DELTA or isStatUpgrade then
+                table.insert(upgrades, {
+                    slot        = "MAINHAND",
+                    label       = currentMH and currentMH.label or "Main Hand",
+                    itemName    = drop.name,
+                    currentIlvl = math.max(currentMHilvl, currentOHilvl),
+                    dropIlvl    = drop.ilvl,
+                    gain        = gain,
+                    itemLink    = drop.itemLink,
+                    stats       = ns.GetItemStatsCompat(drop.itemLink),
+                    secondaryStatScore = ns:SecondaryStatScore(stats, weights),
+                    currentSecondaryStatScore = ns:SecondaryStatScore(mhStats, weights),
+                    fromClient  = true,
+                })
+            end
         end
-    end
+    else
 
-    for _, drop in ipairs(allOH) do
-        -- If player uses 2H, an offhand is only an upgrade if the 1H+OH
-        -- combo would beat the current 2H, so compare against 2H ilvl
-        local compareIlvl = playerUsing2H and currentMHilvl or currentOHilvl
-        local gain = drop.ilvl - compareIlvl
-        local stats = ns.GetItemStatsCompat(drop.itemLink)
-        if gain >= MIN_UPGRADE_DELTA then
+        for _, drop in ipairs(all1H) do
+            local gain = drop.ilvl - currentMHilvl
+            local stats = ns.GetItemStatsCompat(drop.itemLink)
             local dropRatio = ns:StatRatioScore(stats)
-            local currentRatio = ns:StatRatioScore(bestCurrent.stats)
-            if dropRatio > currentRatio then
+            local currentRatio = ns:StatRatioScore(mhStats)
+            local isStatUpgrade = dropRatio > currentRatio + 0.01
+
+            if not playerUsing2H and dropRatio > currentRatio + 0.01 then
                 statUpgradeCount = statUpgradeCount + 1
             end
-            table.insert(upgrades, {
-                slot        = "OFFHAND",
-                label       = "Off Hand",
-                itemName    = drop.name,
-                currentIlvl = compareIlvl,  -- show the real comparison in UI
-                dropIlvl    = drop.ilvl,
-                gain        = gain,
-                stats       = ns.GetItemStatsCompat(drop.itemLink),
-                currentSecondaryStatScore = ns:SecondaryStatScore(stats, weights),
-                fromClient  = true,
-            })
+
+            if gain >= MIN_UPGRADE_DELTA or isStatUpgrade then
+                table.insert(upgrades, {
+                    slot        = "MAINHAND",
+                    label       = currentMH and currentMH.label or "Main Hand",
+                    itemName    = drop.name,
+                    currentIlvl = currentMHilvl,
+                    dropIlvl    = drop.ilvl,
+                    gain        = gain,
+                    itemLink    = drop.itemLink,
+                    stats       = ns.GetItemStatsCompat(drop.itemLink),
+                    secondaryStatScore = ns:SecondaryStatScore(stats, weights),
+                    currentSecondaryStatScore = ns:SecondaryStatScore(mhStats, weights),
+                    fromClient  = true,
+                })
+            end
+        end
+
+        for _, drop in ipairs(allOH) do
+            -- If player uses 2H, an offhand is only an upgrade if the 1H+OH
+            -- combo would beat the current 2H, so compare against 2H ilvl
+            local compareIlvl = playerUsing2H and currentMHilvl or currentOHilvl
+            local gain = drop.ilvl - compareIlvl
+            local stats = ns.GetItemStatsCompat(drop.itemLink)
+            local dropRatio = ns:StatRatioScore(stats)
+            local currentRatio = ns:StatRatioScore(ohStats)
+            local isStatUpgrade = dropRatio > currentRatio + 0.01
+            
+            if not playerUsing2H and dropRatio > currentRatio + 0.01 then
+                statUpgradeCount = statUpgradeCount + 1
+            end
+            if gain >= MIN_UPGRADE_DELTA or isStatUpgrade then
+                table.insert(upgrades, {
+                    slot        = "OFFHAND",
+                    label       = "Off Hand",
+                    itemName    = drop.name,
+                    currentIlvl = compareIlvl,  -- show the real comparison in UI
+                    dropIlvl    = drop.ilvl,
+                    gain        = gain,
+                    itemLink    = drop.itemLink,
+                    stats       = stats,
+                    secondaryStatScore = ns:SecondaryStatScore(stats, weights),
+                    currentSecondaryStatScore = ns:SecondaryStatScore(ohStats, weights),
+                    fromClient  = true,
+                })
+            end
         end
     end
 
     -- Use only the winning loadout's gain for scoring to avoid inflating numbers
-    if score2HWins then
+    if weaponMode == "2H" then
         scoringGain = gain2H
     else
         scoringGain = gain1H
@@ -286,6 +299,15 @@ function ns:SecondaryStatScore(stats, weights)
         (stats["ITEM_MOD_HASTE_RATING_SHORT"] or 0)   * (weights.haste or 0) +
         (stats["ITEM_MOD_MASTERY_RATING_SHORT"] or 0) * (weights.mastery or 0) +
         (stats["ITEM_MOD_VERSATILITY"] or 0)    * (weights.versatility or 0)
+end
+
+local function HasItemLink(tbl, itemLink)
+    for _, entry in ipairs(tbl) do
+        if entry.itemLink == itemLink then
+            return true
+        end
+    end
+    return false
 end
 
 --[[
@@ -440,11 +462,14 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                 local stats = ns.GetItemStatsCompat(drop.itemLink)
                 -- For multi-slots (rings/trinkets), show generic label instead of "Trinket 1"/"Ring 1"
                 local displayLabel = MULTI_SLOT_LABELS[slot] or bestCurrent.label
-
-                local dropRatio = ns:StatRatioScore(stats)
+                local dropRatio = ns:StatRatioScore(ns.GetItemStatsCompat(drop.itemLink))
                 local currentRatio = ns:StatRatioScore(bestCurrent.stats)
-                if dropRatio > currentRatio then
-                    statUpgradeCount = statUpgradeCount + 1
+                if dropRatio > currentRatio + 0.01 then
+                    --print(string.format("aStat upgrade found: %s (%.2f) > %s (%.2f)", drop.name, dropRatio, bestCurrent.label, currentRatio))
+                    --Only count the stat upgrade if it isn't an ignored tier piece
+                    if not DungeonAdvisorCharDB.ignoreTiers[bestCurrent.key] then
+                        statUpgradeCount = statUpgradeCount + 1
+                    end
                 end
 
                 --print("BestCurrent stats: ")
@@ -462,37 +487,46 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                     secondaryStatScore = ns:SecondaryStatScore(stats, weights),
                     fromClient  = true,
                 })
-            else
-                -- not an ilvl upgrade — check if it's a stat upgrade over any slot
-                for _, current in ipairs(currentPieces) do
+            end
+
+            for _, current in ipairs(currentPieces) do
+                -- Don't process this at all if this drop was already added
+                if not DungeonAdvisorCharDB.ignoreTiers[current.key] and current.key ~= "TRINKET" and not HasItemLink(statOnlyUpgrades, drop.itemLink) then
                     local dropRatio = ns:StatRatioScore(ns.GetItemStatsCompat(drop.itemLink))
                     local currentRatio = ns:StatRatioScore(current.stats)
+
                     if dropRatio > currentRatio + 0.01 then
-                        local stats = ns.GetItemStatsCompat(drop.itemLink)
-                        local displayLabel = MULTI_SLOT_LABELS[slot] or current.label
-                        table.insert(statOnlyUpgrades, {
-                            slot         = current.key,
-                            label        = displayLabel,
-                            itemName     = drop.name,
-                            itemLink     = drop.itemLink,
-                            currentIlvl  = current.ilvl,
-                            currentStats = current.stats,
-                            dropIlvl     = drop.ilvl,
-                            gain         = 0,  -- no ilvl gain
-                            stats        = stats,
-                            secondaryStatScore = ns:SecondaryStatScore(stats, weights),
-                            currentSecondaryStatScore = current.secondaryStatScore,
-                            isStatOnlyUpgrade = true,  -- flag for UI to display differently
-                            fromClient   = true,
-                        })
-                        break  -- only add once per drop
+                        --Don't add this if it already exists in upgradeDetails to avoid duplicates, but if it's a pure stat upgrade with no ilvl gain, it won't be in there so we need to add it as a separate entry
+                        if not HasItemLink(upgradeDetails, drop.itemLink) then
+                            local stats = ns.GetItemStatsCompat(drop.itemLink)
+                            local displayLabel = MULTI_SLOT_LABELS[slot] or current.label
+                            --print(string.format("bStat upgrade found: %s (%.2f) > %s (%.2f)", drop.name, dropRatio, current.label, currentRatio))
+                            statUpgradeCount = statUpgradeCount + 1
+                            table.insert(statOnlyUpgrades, {
+                                slot         = current.key,
+                                label        = displayLabel,
+                                itemName     = drop.name,
+                                itemLink     = drop.itemLink,
+                                currentIlvl  = current.ilvl,
+                                currentStats = current.stats,
+                                dropIlvl     = drop.ilvl,
+                                gain         = 0,  -- no ilvl gain
+                                stats        = stats,
+                                secondaryStatScore = ns:SecondaryStatScore(stats, weights),
+                                currentSecondaryStatScore = current.secondaryStatScore,
+                                fromClient   = true,
+                            })
+                            break  -- only add once per drop
+                        end
                     end
                 end
             end
+            
         end
     end
 
-    local weaponUpgrades, weaponScoringGain = ScoreWeaponLoadout(weaponDrops, playerGear, weights)
+    local weaponUpgrades, weaponScoringGain, weaponStatUpgradeCount = ScoreWeaponLoadout(weaponDrops, playerGear, weights)
+    statUpgradeCount = statUpgradeCount + weaponStatUpgradeCount
     for _, wu in ipairs(weaponUpgrades) do
         upgradeCount  = upgradeCount + 1
 
@@ -500,9 +534,8 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
         local secondaryScore = ns:SecondaryStatScore(ns.GetItemStatsCompat(wu.itemLink), weights)
 
         totalStatScore = totalStatScore + statScore
-        totalSecondaryStatScore = totalSecondaryStatScore + secondaryScore
+        totalSecondaryStatScore = totalSecondaryStatScore + wu.secondaryStatScore
 
-        wu.secondaryStatScore = secondaryScore
         table.insert(upgradeDetails, wu)
     end
     totalIlvlGain = totalIlvlGain + weaponScoringGain  -- but only score the best loadout
@@ -600,11 +633,14 @@ function DungeonAdvisorCalc:RankDungeons()
             local score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, totalSecondaryStatScore, statUpgradeCount, statOnlyUpgrades  = self:CalculateDungeonScore(drops, playerGear)
             local avgStatScore = upgradeCount > 0 and (totalStatScore / upgradeCount) or 0
             local baseValue = (#drops > 0) and (totalIlvlGain / #drops) or 0
-            local statMultiplier = 1 + totalSecondaryStatScore * 0.2
             
+            -- Each component normalized to 0-1 range
+            local ilvlDensity  = totalIlvlGain / #drops * W_ILVL_DENSITY
+            local upgradeRate  = upgradeCount / #drops * W_UPGRADE_RATE                    -- fraction of drops that are ilvl upgrades
+            local statQuality  = statUpgradeCount / #drops * W_STAT_QUALITY -- fraction of drops that are stat upgrades
             
-            local efficiency = (totalIlvlGain / #drops) * (1 + avgStatScore * 0.2)
-
+            local efficiency = ilvlDensity + upgradeRate + statQuality
+            
             table.insert(results, {
                 name           = dungeonEntry.name,
                 score          = score,
@@ -614,7 +650,6 @@ function DungeonAdvisorCalc:RankDungeons()
                 dropCount      = #drops,
                 avgStatScore   = avgStatScore,
                 baseValue      = baseValue,
-                statMultiplier = statMultiplier,
                 upgradeDetails = upgradeDetails,
                 statUpgradeCount = statUpgradeCount,
                 statOnlyUpgrades  = statOnlyUpgrades,

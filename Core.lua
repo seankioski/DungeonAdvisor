@@ -1,12 +1,9 @@
 --TODO
 --add filter for champ vs hero upgrades
 -- add filter for tier set slot track upgrades
--- trinket info not showing
 -- make the efficiency calc be simpler and be some combination of ilvl upgrades percent and total level, and also stat upgrades chances
--- make stat upgrades appear in the detailed into panel too. all loot there that is either ilvl or stat upgrade should show there
--- only show green plus if it's an stat upgrade, dont show red minus
 -- also make sure header says stat upgrades too in the details panel
--- dont show secondary for trinkets
+--update formulas and the formula breakdown
 
 
 local addonName, ns = ...
@@ -33,6 +30,11 @@ DungeonAdvisor.version = "1.0.2"
 
 -- Global loot database (populated at PLAYER_LOGIN)
 DungeonAdvisorLootDB = {}
+
+-- Tuneable weights
+W_ILVL_DENSITY  = 0.60  -- how much raw ilvl gain per drop matters
+W_UPGRADE_RATE  = 4  -- how often you actually get an upgrade
+W_STAT_QUALITY  = 2  -- how often the upgrade also has good stats
 
 -- Slot IDs we care about (WoW inventory slot numbers)
 DungeonAdvisor.SLOTS = {
@@ -142,10 +144,13 @@ function ns:SetStatWeight(stat, value)
 end
 
 -- Returns a table of { slotName -> currentIlvl } for the player
+playerUsing2H = false
+weaponMode = "2H"
 function DungeonAdvisor:GetEquippedGear()
     local weights = ns:GetSpecWeights()
     local gear = {}
 
+    
     for slotName, slotInfo in pairs(self.SLOTS) do
         local itemLink = GetInventoryItemLink("player", slotInfo.id)
         -- Rename base finger/trinket to FINGER1/TRINKET1 for consistency
@@ -154,14 +159,27 @@ function DungeonAdvisor:GetEquippedGear()
         if slotName == "TRINKET" then key = "TRINKET1" end
 
         if itemLink then
-            local ilvl = select(4, GetItemInfo(itemLink)) or 0
+            local _, _, _, ilvl, _, itemType, itemSubType = GetItemInfo(itemLink)
+            if itemType == "Weapon" then
+                playerUsing2H = (
+                    itemSubType == "Two-Handed Swords" or
+                    itemSubType == "Two-Handed Axes"   or
+                    itemSubType == "Two-Handed Maces"  or
+                    itemSubType == "Polearms"          or
+                    itemSubType == "Staves"            or
+                    itemSubType == "Bows"         or
+                    itemSubType == "Guns"         or
+                    itemSubType == "Crossbows"
+                )
+            end
+
             local stats = ns.GetItemStatsCompat(itemLink)
             gear[key] = {
                 ilvl  = ilvl,
                 name  = GetItemInfo(itemLink) or "Unknown",
                 label = slotInfo.label,
                 secondaryStatScore = ns:SecondaryStatScore(stats, weights),
-                stats = stats
+                stats = stats,
             }
         else
             gear[key] = { ilvl = 0, secondaryStatScore = 0,name = "Empty", label = slotInfo.label }
@@ -211,6 +229,7 @@ eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
         DungeonAdvisorDB = DungeonAdvisorDB or {}
+        DungeonAdvisorCharDB = DungeonAdvisorCharDB or {}
         print("|cff00ccff[DungeonAdvisor]|r Loaded! Type |cffFFD700/da|r to open.")
     end
     if event == "PLAYER_ENTERING_WORLD" then

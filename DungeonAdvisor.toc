@@ -4,6 +4,7 @@
 ## Author: Helper
 ## Version: 1.0.2
 ## SavedVariables: DungeonAdvisorDB
+## SavedVariablesPerCharacter: DungeonAdvisorCharDB
 
 Data.lua
 Core.lua

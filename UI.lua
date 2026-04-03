@@ -4,7 +4,7 @@ local addonName, ns = ...
 
 DungeonAdvisorUI = {}
 
-local FRAME_WIDTH  = 1130
+local FRAME_WIDTH  = 1230
 local FRAME_HEIGHT = 460
 local ROW_HEIGHT   = 26
 local DETAIL_WIDTH = 330
@@ -129,7 +129,7 @@ local function CreateStatInputs(parent)
         { key = "versatility", label = "Versatility" },
     }
 
-    local startY = -50  -- below spec text
+    local startY = -70  -- below spec text
 
     for i, stat in ipairs(stats) do
         local rowY = startY - (i - 1) * 26
@@ -160,6 +160,68 @@ local function CreateStatInputs(parent)
         end)
 
         statInputs[stat.key] = editBox
+    end
+end
+
+local function CreateRadioButton(parent, label, group, onSelected)
+    local btn = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+
+    btn.text:SetText(label)
+    btn.group = group
+
+    btn:SetScript("OnClick", function(self)
+        -- Uncheck all others in the group
+        for _, other in ipairs(self.group) do
+            other:SetChecked(false)
+        end
+
+        -- Check this one
+        self:SetChecked(true)
+
+        -- Fire callback
+        if onSelected then
+            onSelected()
+        end
+    end)
+
+    table.insert(group, btn)
+
+    return btn
+end
+
+local function CreateIgnoreTierInputs(parent)
+    if not DungeonAdvisorCharDB.ignoreTiers then
+        DungeonAdvisorCharDB.ignoreTiers = {}
+    end
+
+    local slots = {
+        { key = "HEAD",        label = "Head" },
+        { key = "SHOULDER",       label = "Shioulder" },
+        { key = "CHEST",     label = "Chest" },
+        { key = "HANDS", label = "Hands" },
+        { key = "LEGS", label = "Legs" },
+    }
+
+    local startY = -210
+
+    for i, stat in ipairs(slots) do
+        local rowY = startY - (i - 1) * 26
+
+        -- Label
+        local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, rowY)
+        label:SetText(stat.label)
+
+        local checkbox = CreateFrame("CheckButton", "MyAddonCheckbox", parent, "UICheckButtonTemplate")
+        checkbox:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, rowY + 10)
+        checkbox:SetChecked(DungeonAdvisorCharDB.ignoreTiers and DungeonAdvisorCharDB.ignoreTiers[stat.key])
+
+        -- Click handler
+        checkbox:SetScript("OnClick", function(self)
+            local isChecked = self:GetChecked()
+            DungeonAdvisorCharDB.ignoreTiers[stat.key] = isChecked
+            DungeonAdvisorUI:RefreshDungeonList()
+        end)
     end
 end
 
@@ -215,13 +277,18 @@ local function RenderDetailPanel(result)
     local weights = ns:GetSpecWeights()
 
     if not result then
-        AddLine("\n\n\n\n\n\n\n\n\n\n\nHover over a dungeon to preview details", 0.6, 0.6, 0.6)
+        AddLine("\n\n\n\n\n\n\n\n\n\n\n\n\n\n        Hover over a dungeon to preview details", 0.6, 0.6, 0.6)
         return
     end
 
     -- Header
     AddLine(result.name, 1, 0.82, 0)
-    AddLine(string.format("%d upgrades  +%d ilvl total", result.upgradeCount, result.totalIlvlGain), 0.2, 1, 0.2)
+    if result.upgradeCount > 0 then
+        AddLine(string.format("%d ilvl upgrades  +%d ilvl total", result.upgradeCount, result.totalIlvlGain), 0.2, 1, 0.2)
+    end
+    if result.statUpgradeCount > 0 then
+        AddLine(string.format("%d stat upgrades", result.statUpgradeCount), 0.2, 1, 0.2)
+    end
     AddLine(" ")
 
     local sorted = {}
@@ -231,7 +298,10 @@ local function RenderDetailPanel(result)
     -- merge in stat-only upgrades
     if result.statOnlyUpgrades then
         for _, detail in ipairs(result.statOnlyUpgrades) do
-            table.insert(sorted, detail)
+            -- If this already exists in sorted, merge the stat-only info into the existing entry instead of adding a duplicate line
+            if not sorted[detail.key] then
+                table.insert(sorted, detail)
+            end
         end
     end
     table.sort(sorted, function(a, b)
@@ -274,7 +344,7 @@ local function RenderDetailPanel(result)
                 { key = "ITEM_MOD_CRIT_RATING_SHORT",    label = "Crit",    color = "|cffff4444" },
                 { key = "ITEM_MOD_HASTE_RATING_SHORT",   label = "Haste",   color = "|cffFFD700" },
                 { key = "ITEM_MOD_MASTERY_RATING_SHORT", label = "Mastery", color = "|cff44aaFF" },
-                { key = "ITEM_MOD_VERSATILITY",          label = "Vers",    color = "|cff44ff88" },
+                { key = "ITEM_MOD_VERSATILITY",          label = "Vers",    color = "|cff66aaaa" },
             }
 
             for _, stat in ipairs(statDefs) do
@@ -294,7 +364,9 @@ local function RenderDetailPanel(result)
                     local currentRatio = ns:StatRatioScore(detail.currentStats)
 
                     if dropRatio > currentRatio + 0.01 then
-                        indicator = "|cff00ffff+|r "
+                        if not DungeonAdvisorCharDB.ignoreTiers[detail.slot] then
+                            indicator = "|cff00ff00+++|r "
+                        end
                     end
                 end
 
@@ -372,7 +444,7 @@ local function BuildDungeonRows(scrollChild, results)
         "Efficiency factor for obtaining upgrades. Higher is better.\nFactors in:\n- ilvl upgrades\n- secondary stat weights\n- item track upgrades")
 
     local headerDrops = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    headerDrops:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 340, headerY)
+    headerDrops:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 335, headerY)
     headerDrops:SetText("iLvl Upgrades")
     headerDrops:SetTextColor(1, 1, 1)
     AttachHeaderTooltip(headerDrops, scrollChild,
@@ -380,7 +452,7 @@ local function BuildDungeonRows(scrollChild, results)
         "How many of this dungeon's drops are an upgrade for you.\n(Upgrades / Total drops).")
 
     local headerStatUpgrades = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    headerStatUpgrades:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 510, headerY)
+    headerStatUpgrades:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 490, headerY)
     headerStatUpgrades:SetText("Stat Upgrades")
     headerStatUpgrades:SetTextColor(1, 1, 1)
     AttachHeaderTooltip(headerStatUpgrades, scrollChild,
@@ -391,6 +463,17 @@ local function BuildDungeonRows(scrollChild, results)
     for i, result in ipairs(results) do
         local r, g, b = ScoreColor(result.score)
         -- local stars    = ScoreStars(result.score)
+        local upgradePct = result.dropCount > 0 
+            and math.floor((result.upgradeCount / result.dropCount) * 100) 
+            or 0
+        local ilvlpctColor
+        if upgradePct >= 50 then
+            ilvlpctColor = "|cff00ff00"
+        elseif upgradePct >= 25 then
+            ilvlpctColor = "|cffFFD700"
+        else
+            ilvlpctColor = "|cffff4444"
+        end
 
         -- Clickable highlight background
         local bg = CreateFrame("Button", nil, scrollChild)
@@ -419,7 +502,7 @@ local function BuildDungeonRows(scrollChild, results)
         -- Dungeon name
         local label = bg:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         label:SetPoint("LEFT", rankText, "RIGHT", 4, 0)
-        label:SetWidth(220)
+        label:SetWidth(210)
         label:SetJustifyH("LEFT")
         label:SetTextColor(1, 1, 1)  -- always white
         label:SetText(result.name)
@@ -450,28 +533,23 @@ local function BuildDungeonRows(scrollChild, results)
             GameTooltip:AddLine("Efficiency Breakdown", 1, 1, 1)
             GameTooltip:AddLine(" ")
 
-            GameTooltip:AddDoubleLine("Total ilvl gain:", result.totalIlvlGain, 0.8,0.8,0.8, 1,1,1)
-            GameTooltip:AddDoubleLine("Drop count:", result.dropCount, 0.8,0.8,0.8, 1,1,1)
+            local densityScore = result.totalIlvlGain / result.dropCount * W_ILVL_DENSITY
+            local ilvlRateScore = result.upgradeCount / result.dropCount * W_UPGRADE_RATE
+            local statRateScore = result.statUpgradeCount / result.dropCount * W_STAT_QUALITY
 
+            -- Label the scores, to 2 deicmal places
+            GameTooltip:AddDoubleLine("iLvls:", string.format("%.2f", densityScore + ilvlRateScore), 1,1,0.3, 1,1,0.3)
+            GameTooltip:AddDoubleLine("iLvl density:", string.format("%.2f", densityScore), 0.8,0.8,0.8, 0.8,0.8,0.8)
+            GameTooltip:AddDoubleLine("Loot drop rate:", string.format("%.2f", ilvlRateScore), 0.8,0.8,0.8, 0.8,0.8,0.8)
             GameTooltip:AddLine(" ")
 
-            GameTooltip:AddDoubleLine("Base (gain/drops):",
-                string.format("%.2f", result.baseValue or 0),
-                0.8,0.8,0.8, 0.6,1,0.6)
-
-            GameTooltip:AddDoubleLine("Avg stat score:",
-                string.format("%.2f", result.avgStatScore or 0),
-                0.8,0.8,0.8, 0.6,0.8,1)
-
-            GameTooltip:AddDoubleLine("Stat multiplier:",
-                string.format("%.2f", result.statMultiplier or 0),
-                0.8,0.8,0.8, 1,0.8,0.4)
-
+            GameTooltip:AddDoubleLine("Stats:", string.format("%.2f", statRateScore), 1,1,0.3, 1,1,0.3)
             GameTooltip:AddLine(" ")
+
 
             GameTooltip:AddDoubleLine("Final Efficiency:",
                 string.format("%.2f", result.efficiency or 0),
-                1,1,1, 0,1,0)
+                1,1,1, effR, effG, effB)
 
             GameTooltip:Show()
 
@@ -491,33 +569,22 @@ local function BuildDungeonRows(scrollChild, results)
         end)
 
         -- ilvl upgrades
-        local upgradePct = result.dropCount > 0 
-            and math.floor((result.upgradeCount / result.dropCount) * 100) 
-            or 0
-
         local dropsText = bg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        dropsText:SetPoint("LEFT", bg, "LEFT", 340, 0)
+        dropsText:SetPoint("LEFT", bg, "LEFT", 330, 0)
         dropsText:SetWidth(140)
         dropsText:SetJustifyH("LEFT")
 
         -- Color the percentage: green if high, yellow if mid, red if low
-        local pctColor
-        if upgradePct >= 50 then
-            pctColor = "|cff00ff00"
-        elseif upgradePct >= 25 then
-            pctColor = "|cffFFD700"
-        else
-            pctColor = "|cffff4444"
-        end
+        
         local gainStr    = "|cFFAAAAFF+" .. result.totalIlvlGain .. " ilvl|r"
-        dropsText:SetText(pctColor .. upgradePct .. "%|r" .. " (" .. result.upgradeCount .. "/" .. result.dropCount .. ") " .. gainStr)
+        dropsText:SetText(ilvlpctColor .. upgradePct .. "%|r" .. " (" .. result.upgradeCount .. "/" .. result.dropCount .. ") " .. gainStr)
 
         local statUpgradePct = result.dropCount > 0
             and math.floor(((result.statUpgradeCount or 0) / result.dropCount) * 100)
             or 0
 
         local statUpgradeText = bg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        statUpgradeText:SetPoint("LEFT", bg, "LEFT", 510, 0)
+        statUpgradeText:SetPoint("LEFT", bg, "LEFT", 485, 0)
         statUpgradeText:SetWidth(90)
         statUpgradeText:SetJustifyH("LEFT")
 
@@ -664,7 +731,7 @@ local function UpdateDifficultyButtonHighlights()
 end
 
 local function CreateDifficultyButtons(parent)
-    local yOffset = -140  -- Start below the title
+    local yOffset = -60  -- Start below the title
     for i, diff in ipairs(ns.DIFFICULTIES.DUNGEON) do
         local button = CreateFrame("Button", nil, parent)
         button:SetSize(120, 25)  -- Width matches old dropdown, height for readability
@@ -713,7 +780,8 @@ end
 
 
 
-local sidebar
+local configSidebar
+local difficultySidebar
 function DungeonAdvisorUI:Create()
     if self.frame then return end
 
@@ -733,7 +801,7 @@ function DungeonAdvisorUI:Create()
 
     -- Bottom info
     local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    subtitle:SetPoint("BOTTOM", f, "BOTTOM", 0, 10)  -- Shift right to avoid sidebar
+    subtitle:SetPoint("BOTTOM", f, "BOTTOM", 0, 10)  -- Shift right to avoid configSidebar
     subtitle:SetText("|cffAAAAAAAt the end of a dungeon 2/5 players will get a loot drop|r")
 
     -- Version
@@ -741,22 +809,66 @@ function DungeonAdvisorUI:Create()
     verString:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
     verString:SetText(DungeonAdvisor.version)
 
-    -- Sidebar for difficulty buttons (separate vertical stack)
-    sidebar = CreateFrame("Frame", nil, f)
-    sidebar:SetSize(130, FRAME_HEIGHT - 60)  -- Width for buttons, height to fit
-    sidebar:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -30)
-    -- Optional: Add a subtle background to the sidebar
-    local sidebarBg = sidebar:CreateTexture(nil, "BACKGROUND")
-    sidebarBg:SetAllPoints()
-    sidebarBg:SetColorTexture(0.1, 0.1, 0.1, 0.3)  -- Dark background for separation
+    -- configSidebar for difficulty buttons (separate vertical stack)
+    configSidebar = CreateFrame("Frame", nil, f)
+    configSidebar:SetSize(130, FRAME_HEIGHT - 60)  -- Width for buttons, height to fit
+    configSidebar:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -30)
+    -- Optional: Add a subtle background to the configSidebar
+    local configSidebarBg = configSidebar:CreateTexture(nil, "BACKGROUND")
+    configSidebarBg:SetAllPoints()
+    configSidebarBg:SetColorTexture(0.1, 0.1, 0.1, 0.3)  -- Dark background for separation
 
-    -- Add difficulty buttons to the sidebar
-    CreateDifficultyButtons(sidebar)
+    -- "Stat Weights" on configSidebar
+    local statWeightText = configSidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    statWeightText:SetPoint("TOP", configSidebar, "TOP", 0, -50)
+    statWeightText:SetText("Stat Weights")
 
-    -- Rescan button below spec name in sidebar
-    local scanBtn = CreateFrame("Button", nil, sidebar, "UIPanelButtonTemplate")
+    CreateIgnoreTierInputs(configSidebar)
+
+    -- "Ignore Tier Slots" on configSidebar
+    local ignoreTierText = configSidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ignoreTierText:SetPoint("TOP", configSidebar, "TOP", 0, -190)
+    ignoreTierText:SetText("Ignore Tier Slots")
+
+    -- "Weapon Mode" on configSidebar
+    local weaponModeText = configSidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    weaponModeText:SetPoint("TOP", configSidebar, "TOP", 0, -360)
+    weaponModeText:SetText("Weapon Mode")
+
+    local radioGroup = {}
+    local r1 = CreateRadioButton(configSidebar, "2H", radioGroup, function(val)
+        weaponMode = "2H"
+        DungeonAdvisorUI:RefreshDungeonList()
+    end)
+    local r2 = CreateRadioButton(configSidebar, "1H", radioGroup, function(val)
+        weaponMode = "1H"
+        DungeonAdvisorUI:RefreshDungeonList()
+    end)
+    r1:SetPoint("TOPLEFT", 10, -370)
+    r2:SetPoint("TOPRIGHT", -30, -370)
+    if playerUsing2H then
+        r1:SetChecked(true)
+    else
+        r2:SetChecked(true)
+    end
+
+
+    -- difficultySidebar for difficulty buttons (separate vertical stack)
+    difficultySidebar = CreateFrame("Frame", nil, f)
+    difficultySidebar:SetSize(130, FRAME_HEIGHT - 60)  -- Width for buttons, height to fit
+    difficultySidebar:SetPoint("TOPLEFT", f, "TOPLEFT", 140, -30)
+    -- Optional: Add a subtle background to the configSidebar
+    local difficultySidebarBg = configSidebar:CreateTexture(nil, "BACKGROUND")
+    difficultySidebarBg:SetAllPoints()
+    difficultySidebarBg:SetColorTexture(0.1, 0.1, 0.1, 0.3)  -- Dark background for separation
+
+    -- Add difficulty buttons to the configSidebar
+    CreateDifficultyButtons(difficultySidebar)
+
+    -- Rescan button below spec name in configSidebar
+    local scanBtn = CreateFrame("Button", nil, configSidebar, "UIPanelButtonTemplate")
     scanBtn:SetSize(110, 22)
-    scanBtn:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 8, -0)
+    scanBtn:SetPoint("TOPLEFT", configSidebar, "TOPLEFT", 8, -0)
     scanBtn:SetText("Rescan Gear")
     scanBtn:SetScript("OnClick", function()
         DungeonAdvisorUI:Refresh()
@@ -795,7 +907,7 @@ function DungeonAdvisorUI:Create()
 
     -- List frame (now after dp exists so the anchor is valid)
     local listFrame = CreateFrame("Frame", "DungeonAdvisorList", f)
-    listFrame:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 10, 0)
+    listFrame:SetPoint("TOPLEFT", difficultySidebar, "TOPRIGHT", 10, 0)
     listFrame:SetPoint("BOTTOMRIGHT", dp, "BOTTOMLEFT", -8, 0)
 
     f:Hide()
@@ -817,11 +929,11 @@ local specString
 function DungeonAdvisorUI:UpdateSpecInfo()
     if not self.frame then return end
     if not specString then
-        specString = sidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        specString:SetPoint("TOP", sidebar, "TOP", 0, -26)
+        specString = configSidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        specString:SetPoint("TOP", configSidebar, "TOP", 0, -26)
         specString:SetJustifyH("CENTER")
 
-        CreateStatInputs(sidebar)
+        CreateStatInputs(configSidebar)
     end
 
     specString:SetText(string.format("%s %s", ns.state.selectedSpecName, ns.state.selectedClassName))

@@ -89,7 +89,6 @@ ns.DIFF_COLORS = {
 
 function ns:GetDifficultyByID(dungeonDiff)
     for _, diff in ipairs(ns.DIFFICULTIES.DUNGEON) do
-        print(diff.id, dungeonDiff)
         if diff.id == dungeonDiff then return diff end
     end
 end
