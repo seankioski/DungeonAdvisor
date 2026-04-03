@@ -34,7 +34,8 @@ DungeonAdvisorLootDB = {}
 -- Tuneable weights
 W_ILVL_DENSITY  = 0.60  -- how much raw ilvl gain per drop matters
 W_UPGRADE_RATE  = 4  -- how often you actually get an upgrade
-W_STAT_QUALITY  = 2  -- how often the upgrade also has good stats
+W_STAT_QUALITY  = 4  -- how often the upgrade also has good stats
+W_TRACK  = 7  -- how often the upgrade also has good stats
 
 -- Slot IDs we care about (WoW inventory slot numbers)
 DungeonAdvisor.SLOTS = {
@@ -180,6 +181,7 @@ function DungeonAdvisor:GetEquippedGear()
                 label = slotInfo.label,
                 secondaryStatScore = ns:SecondaryStatScore(stats, weights),
                 stats = stats,
+                track = ns:GetTrackFromItemLink(itemLink),
             }
         else
             gear[key] = { ilvl = 0, secondaryStatScore = 0,name = "Empty", label = slotInfo.label }
@@ -197,7 +199,8 @@ function DungeonAdvisor:GetEquippedGear()
                 name  = GetItemInfo(itemLink) or "Unknown",
                 label = extraInfo.label,
                 secondaryStatScore = ns:SecondaryStatScore(stats, weights),
-                stats = stats
+                stats = stats,
+                track = ns:GetTrackFromItemLink(itemLink),
             }
         else
             gear[extraName] = { ilvl = 0, secondaryStatScore = 0, name = "Empty", label = extraInfo.label }

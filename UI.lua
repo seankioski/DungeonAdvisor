@@ -4,10 +4,10 @@ local addonName, ns = ...
 
 DungeonAdvisorUI = {}
 
-local FRAME_WIDTH  = 1230
+local FRAME_WIDTH  = 1390
 local FRAME_HEIGHT = 460
 local ROW_HEIGHT   = 26
-local DETAIL_WIDTH = 330
+local DETAIL_WIDTH = 350
 local DETAIL_COLOR = { r = 0.8, g = 0.8, b = 0.8 }
 local SLOT_SORT_ORDER = {
     ["Main Hand"] = 1,
@@ -313,7 +313,10 @@ local function RenderDetailPanel(result)
     for _, detail in ipairs(sorted) do
         -- line 1: slot + item name + ilvl arrow all on one line
         local arrow = "|cff888888" .. detail.currentIlvl .. " -> " .. detail.dropIlvl .. "|r"
-        local gain  = "|cff00ff44+" .. detail.gain .. "|r"
+        local gain  = ""
+        if detail.gain > 0 then
+            gain = "|cff00ff44+" .. detail.gain .. "|r"
+        end
         AddLine(string.format("|cffFFD700[%s]|r %s %s %s", detail.label, detail.itemLink, arrow, gain), 1, 1, 1, 8, "small")
 
         -- local arrow = "|cff888888" .. detail.currentIlvl .. " -> " .. detail.dropIlvl .. "|r"
@@ -364,13 +367,18 @@ local function RenderDetailPanel(result)
                     local currentRatio = ns:StatRatioScore(detail.currentStats)
 
                     if dropRatio > currentRatio + 0.01 then
-                        if not DungeonAdvisorCharDB.ignoreTiers[detail.slot] then
+                        if detail.slot ~= "TRINKET" and not DungeonAdvisorCharDB.ignoreTiers[detail.slot] then
                             indicator = "|cff00ff00+++|r "
                         end
                     end
                 end
 
-                AddLine(indicator .. table.concat(parts, " · "), 1, 1, 1, 14, "small")
+                local trackTag = ""
+                if detail.isTrackUpgrade and detail.dropTrack then
+                    trackTag = string.format(" |cff00ff00[%s]|r", detail.dropTrack)
+                end
+
+                AddLine(indicator .. table.concat(parts, " · ") .. trackTag, 1, 1, 1, 14, "small")
             end
         end
     end
@@ -459,6 +467,14 @@ local function BuildDungeonRows(scrollChild, results)
         "Stat Upgrades",
         "How many drops have a better secondary stat distribution than your currently equipped item.\n(Stat Upgrades / Total drops).")
 
+    local headerTrackUpgrades = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    headerTrackUpgrades:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 600, headerY)
+    headerTrackUpgrades:SetText("Track Upgrades")
+    headerTrackUpgrades:SetTextColor(1, 1, 1)
+    AttachHeaderTooltip(headerTrackUpgrades, scrollChild,
+        "Track Upgrades",
+        "How many drops are a higher upgrade track than your currently equipped item.\n(e.g. Hero drop when you have Champion gear)")
+
     local y = headerY - 20
     for i, result in ipairs(results) do
         local r, g, b = ScoreColor(result.score)
@@ -536,6 +552,7 @@ local function BuildDungeonRows(scrollChild, results)
             local densityScore = result.totalIlvlGain / result.dropCount * W_ILVL_DENSITY
             local ilvlRateScore = result.upgradeCount / result.dropCount * W_UPGRADE_RATE
             local statRateScore = result.statUpgradeCount / result.dropCount * W_STAT_QUALITY
+            local trackScore = result.trackUpgradeCount / result.dropCount * W_TRACK
 
             -- Label the scores, to 2 deicmal places
             GameTooltip:AddDoubleLine("iLvls:", string.format("%.2f", densityScore + ilvlRateScore), 1,1,0.3, 1,1,0.3)
@@ -544,6 +561,9 @@ local function BuildDungeonRows(scrollChild, results)
             GameTooltip:AddLine(" ")
 
             GameTooltip:AddDoubleLine("Stats:", string.format("%.2f", statRateScore), 1,1,0.3, 1,1,0.3)
+            GameTooltip:AddLine(" ")
+
+            GameTooltip:AddDoubleLine("Item Track:", string.format("%.2f", trackScore), 1,1,0.3, 1,1,0.3)
             GameTooltip:AddLine(" ")
 
 
@@ -573,9 +593,7 @@ local function BuildDungeonRows(scrollChild, results)
         dropsText:SetPoint("LEFT", bg, "LEFT", 330, 0)
         dropsText:SetWidth(140)
         dropsText:SetJustifyH("LEFT")
-
         -- Color the percentage: green if high, yellow if mid, red if low
-        
         local gainStr    = "|cFFAAAAFF+" .. result.totalIlvlGain .. " ilvl|r"
         dropsText:SetText(ilvlpctColor .. upgradePct .. "%|r" .. " (" .. result.upgradeCount .. "/" .. result.dropCount .. ") " .. gainStr)
 
@@ -598,6 +616,30 @@ local function BuildDungeonRows(scrollChild, results)
         end
         statUpgradeText:SetText(statPctColor .. statUpgradePct .. "%|r" .. 
             " (" .. (result.statUpgradeCount or 0) .. "/" .. result.dropCount .. ")")
+
+
+        --Track upgrade column data
+        local trackUpgradePct = result.dropCount > 0
+            and math.floor(((result.trackUpgradeCount or 0) / result.dropCount) * 100)
+            or 0
+
+        local trackUpgradeText = bg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        trackUpgradeText:SetPoint("LEFT", bg, "LEFT", 600, 0)
+        trackUpgradeText:SetWidth(90)
+        trackUpgradeText:SetJustifyH("LEFT")
+
+        local trackPctColor
+        if trackUpgradePct >= 50 then
+            trackPctColor = "|cff00ff00"
+        elseif trackUpgradePct >= 25 then
+            trackPctColor = "|cffFFD700"
+        else
+            trackPctColor = "|cffff4444"
+        end
+        trackUpgradeText:SetText(trackPctColor .. trackUpgradePct .. "%|r" ..
+            " (" .. (result.trackUpgradeCount or 0) .. "/" .. result.dropCount .. ")")
+
+
 
         local capturedResult = result
         local isPinned = false

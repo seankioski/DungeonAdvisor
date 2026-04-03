@@ -117,6 +117,7 @@ end
 -- Handle weapons separately
 local function ScoreWeaponLoadout(drops, playerGear, weights)
     local statUpgradeCount = 0
+    local trackUpgradeCount = 0
     local MAINHAND_SLOT = 16
     local OFFHAND_SLOT = 17
     local mhLink = GetInventoryItemLink("player", MAINHAND_SLOT)
@@ -181,6 +182,17 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
             local currentRatio = ns:StatRatioScore(mhStats)
             local isStatUpgrade = dropRatio > currentRatio + 0.01
 
+            -- track upgrade check
+            local dropTrack    = ns:GetTrackFromItemLink(drop.itemLink)
+            local currentTrack = currentMH.track
+            local dropTrackOrder    = dropTrack    and ns.TRACK_ORDER[dropTrack]    or 0
+            local currentTrackOrder = currentTrack and ns.TRACK_ORDER[currentTrack] or 0
+            local isTrackUpgrade = dropTrackOrder > currentTrackOrder
+
+            if isTrackUpgrade then
+                trackUpgradeCount = trackUpgradeCount + 1
+            end
+
             if playerUsing2H and isStatUpgrade then
                 statUpgradeCount = statUpgradeCount + 1
             end
@@ -197,6 +209,9 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
                     stats       = ns.GetItemStatsCompat(drop.itemLink),
                     secondaryStatScore = ns:SecondaryStatScore(stats, weights),
                     currentSecondaryStatScore = ns:SecondaryStatScore(mhStats, weights),
+                    dropTrack        = dropTrack,
+                    currentTrack     = currentTrack,
+                    isTrackUpgrade   = isTrackUpgrade,
                     fromClient  = true,
                 })
             end
@@ -209,6 +224,17 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
             local dropRatio = ns:StatRatioScore(stats)
             local currentRatio = ns:StatRatioScore(mhStats)
             local isStatUpgrade = dropRatio > currentRatio + 0.01
+
+            -- track upgrade check
+            local dropTrack    = ns:GetTrackFromItemLink(drop.itemLink)
+            local currentTrack = currentMH.track
+            local dropTrackOrder    = dropTrack    and ns.TRACK_ORDER[dropTrack]    or 0
+            local currentTrackOrder = currentTrack and ns.TRACK_ORDER[currentTrack] or 0
+            local isTrackUpgrade = dropTrackOrder > currentTrackOrder
+
+            if isTrackUpgrade then
+                trackUpgradeCount = trackUpgradeCount + 1
+            end
 
             if not playerUsing2H and dropRatio > currentRatio + 0.01 then
                 statUpgradeCount = statUpgradeCount + 1
@@ -226,6 +252,9 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
                     stats       = ns.GetItemStatsCompat(drop.itemLink),
                     secondaryStatScore = ns:SecondaryStatScore(stats, weights),
                     currentSecondaryStatScore = ns:SecondaryStatScore(mhStats, weights),
+                    dropTrack        = dropTrack,
+                    currentTrack     = currentTrack,
+                    isTrackUpgrade   = isTrackUpgrade,
                     fromClient  = true,
                 })
             end
@@ -241,6 +270,17 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
             local currentRatio = ns:StatRatioScore(ohStats)
             local isStatUpgrade = dropRatio > currentRatio + 0.01
             
+            -- track upgrade check
+            local dropTrack    = ns:GetTrackFromItemLink(drop.itemLink)
+            local currentTrack = currentOH.track
+            local dropTrackOrder    = dropTrack    and ns.TRACK_ORDER[dropTrack]    or 0
+            local currentTrackOrder = currentTrack and ns.TRACK_ORDER[currentTrack] or 0
+            local isTrackUpgrade = dropTrackOrder > currentTrackOrder
+
+            if isTrackUpgrade then
+                trackUpgradeCount = trackUpgradeCount + 1
+            end
+
             if not playerUsing2H and dropRatio > currentRatio + 0.01 then
                 statUpgradeCount = statUpgradeCount + 1
             end
@@ -256,6 +296,9 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
                     stats       = stats,
                     secondaryStatScore = ns:SecondaryStatScore(stats, weights),
                     currentSecondaryStatScore = ns:SecondaryStatScore(ohStats, weights),
+                    dropTrack        = dropTrack,
+                    currentTrack     = currentTrack,
+                    isTrackUpgrade   = isTrackUpgrade,
                     fromClient  = true,
                 })
             end
@@ -269,7 +312,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
         scoringGain = gain1H
     end
 
-    return upgrades, scoringGain, statUpgradeCount
+    return upgrades, scoringGain, statUpgradeCount, trackUpgradeCount
 end
 
 
@@ -369,6 +412,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     local upgradeDetails = {}
     local statUpgradeCount = 0
     local statOnlyUpgrades = {}
+    local trackUpgradeCount = 0
 
     -- Group all drops by slot (no trimming here)
     local dropsBySlot = {}
@@ -399,7 +443,8 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                 ilvl  = current and current.ilvl or 0,
                 label = current and current.label or gearKey,
                 secondaryStatScore = current.secondaryStatScore,
-                stats = current.stats
+                stats = current.stats,
+                track = current and current.track or nil,
             })
         end
         table.sort(currentPieces, function(a, b) return a.ilvl < b.ilvl end)
@@ -460,6 +505,18 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
             if bestCurrent then
                 local gain  = drop.ilvl - bestCurrent.ilvl
                 local stats = ns.GetItemStatsCompat(drop.itemLink)
+
+                -- track upgrade check
+                local dropTrack    = ns:GetTrackFromItemLink(drop.itemLink)
+                local currentTrack = bestCurrent.track
+                local dropTrackOrder    = dropTrack    and ns.TRACK_ORDER[dropTrack]    or 0
+                local currentTrackOrder = currentTrack and ns.TRACK_ORDER[currentTrack] or 0
+                local isTrackUpgrade = dropTrackOrder > currentTrackOrder
+
+                if isTrackUpgrade then
+                    trackUpgradeCount = trackUpgradeCount + 1
+                end
+
                 -- For multi-slots (rings/trinkets), show generic label instead of "Trinket 1"/"Ring 1"
                 local displayLabel = MULTI_SLOT_LABELS[slot] or bestCurrent.label
                 local dropRatio = ns:StatRatioScore(ns.GetItemStatsCompat(drop.itemLink))
@@ -485,23 +542,48 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                     stats       = stats,
                     currentStats = bestCurrent.stats,
                     secondaryStatScore = ns:SecondaryStatScore(stats, weights),
+                    dropTrack        = dropTrack,
+                    currentTrack     = currentTrack,
+                    isTrackUpgrade   = isTrackUpgrade,
                     fromClient  = true,
                 })
             end
 
             for _, current in ipairs(currentPieces) do
                 -- Don't process this at all if this drop was already added
-                if not DungeonAdvisorCharDB.ignoreTiers[current.key] and current.key ~= "TRINKET" and not HasItemLink(statOnlyUpgrades, drop.itemLink) then
+                if not HasItemLink(statOnlyUpgrades, drop.itemLink) then
+                    
+                    -- track upgrade check
+                    local dropTrack    = ns:GetTrackFromItemLink(drop.itemLink)
+                    local currentTrack = current.track
+                    local dropTrackOrder    = dropTrack    and ns.TRACK_ORDER[dropTrack]    or 0
+                    local currentTrackOrder = currentTrack and ns.TRACK_ORDER[currentTrack] or 0
+                    local isTrackUpgrade = dropTrackOrder > currentTrackOrder
+
+                    if isTrackUpgrade then
+                        trackUpgradeCount = trackUpgradeCount + 1
+                    end
+                    
                     local dropRatio = ns:StatRatioScore(ns.GetItemStatsCompat(drop.itemLink))
                     local currentRatio = ns:StatRatioScore(current.stats)
 
-                    if dropRatio > currentRatio + 0.01 then
+                    local isStatUpgrade = dropRatio > currentRatio + 0.01
+
+                    if isStatUpgrade or isTrackUpgrade then
                         --Don't add this if it already exists in upgradeDetails to avoid duplicates, but if it's a pure stat upgrade with no ilvl gain, it won't be in there so we need to add it as a separate entry
                         if not HasItemLink(upgradeDetails, drop.itemLink) then
                             local stats = ns.GetItemStatsCompat(drop.itemLink)
                             local displayLabel = MULTI_SLOT_LABELS[slot] or current.label
+
+                            
+
                             --print(string.format("bStat upgrade found: %s (%.2f) > %s (%.2f)", drop.name, dropRatio, current.label, currentRatio))
-                            statUpgradeCount = statUpgradeCount + 1
+                            if current.key ~= "TRINKET" and not DungeonAdvisorCharDB.ignoreTiers[current.key] then
+                                statUpgradeCount = statUpgradeCount + 1
+                            end
+                            if isTrackUpgrade then
+                                print(string.format("Track upgrade found: %s (Track: %s) > %s (Track: %s)", drop.name, dropTrack or "None", current.label, currentTrack or "None"))
+                            end
                             table.insert(statOnlyUpgrades, {
                                 slot         = current.key,
                                 label        = displayLabel,
@@ -514,6 +596,8 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                                 stats        = stats,
                                 secondaryStatScore = ns:SecondaryStatScore(stats, weights),
                                 currentSecondaryStatScore = current.secondaryStatScore,
+                                dropTrack = dropTrack,
+                                currentTrack = currentTrack,
                                 fromClient   = true,
                             })
                             break  -- only add once per drop
@@ -525,8 +609,9 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
         end
     end
 
-    local weaponUpgrades, weaponScoringGain, weaponStatUpgradeCount = ScoreWeaponLoadout(weaponDrops, playerGear, weights)
+    local weaponUpgrades, weaponScoringGain, weaponStatUpgradeCount, weaponTrackUpgradeCount = ScoreWeaponLoadout(weaponDrops, playerGear, weights)
     statUpgradeCount = statUpgradeCount + weaponStatUpgradeCount
+    trackUpgradeCount = trackUpgradeCount + weaponTrackUpgradeCount
     for _, wu in ipairs(weaponUpgrades) do
         upgradeCount  = upgradeCount + 1
 
@@ -554,7 +639,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     -- Sort upgrades: biggest ilvl gain first
     table.sort(upgradeDetails, function(a, b) return a.gain > b.gain end)
 
-    return score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, totalSecondaryStatScore, statUpgradeCount, statOnlyUpgrades
+    return score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, totalSecondaryStatScore, statUpgradeCount, statOnlyUpgrades, trackUpgradeCount
 end
 
 --[[
@@ -630,7 +715,7 @@ function DungeonAdvisorCalc:RankDungeons()
         end
         --print(string.format("[DungeonAdvisor] %s: found %d drops for %s", selectedDiff, #drops, dungeonEntry.name or "unknown"))
         if #drops > 0 then
-            local score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, totalSecondaryStatScore, statUpgradeCount, statOnlyUpgrades  = self:CalculateDungeonScore(drops, playerGear)
+            local score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, totalSecondaryStatScore, statUpgradeCount, statOnlyUpgrades, trackUpgradeCount  = self:CalculateDungeonScore(drops, playerGear)
             local avgStatScore = upgradeCount > 0 and (totalStatScore / upgradeCount) or 0
             local baseValue = (#drops > 0) and (totalIlvlGain / #drops) or 0
             
@@ -638,8 +723,9 @@ function DungeonAdvisorCalc:RankDungeons()
             local ilvlDensity  = totalIlvlGain / #drops * W_ILVL_DENSITY
             local upgradeRate  = upgradeCount / #drops * W_UPGRADE_RATE                    -- fraction of drops that are ilvl upgrades
             local statQuality  = statUpgradeCount / #drops * W_STAT_QUALITY -- fraction of drops that are stat upgrades
+            local trackQuality  = trackUpgradeCount / #drops * W_TRACK -- fraction of drops that are stat upgrades
             
-            local efficiency = ilvlDensity + upgradeRate + statQuality
+            local efficiency = ilvlDensity + upgradeRate + statQuality + trackQuality
             
             table.insert(results, {
                 name           = dungeonEntry.name,
@@ -653,6 +739,7 @@ function DungeonAdvisorCalc:RankDungeons()
                 upgradeDetails = upgradeDetails,
                 statUpgradeCount = statUpgradeCount,
                 statOnlyUpgrades  = statOnlyUpgrades,
+                trackUpgradeCount = trackUpgradeCount,
             })
         end
     end

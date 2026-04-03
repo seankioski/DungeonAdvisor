@@ -164,6 +164,20 @@ ns.SECONDARY_STATS = {
 -- The bonus ID encodes BOTH ilvl AND upgrade track (e.g., Champion 2/6 vs Hero 2/6
 -- are the same ilvl 250/263 but different bonus IDs).
 local TRACK_BONUS_IDS = {
+    -- Adventurer track: roughly 12771-12776
+    ADVENTURER_1 = 12771,
+    ADVENTURER_1 = 12772,
+    ADVENTURER_1 = 12773,
+    ADVENTURER_1 = 12774,
+    ADVENTURER_1 = 12775,
+    ADVENTURER_1 = 12776,
+    -- Veteran track: roughly 12778-12783
+    VETERAN_1 = 12778,
+    VETERAN_2 = 12779,
+    VETERAN_3 = 12780,
+    VETERAN_4 = 12781,
+    VETERAN_5 = 12782,
+    VETERAN_6 = 12783,
     -- Champion track: 12785-12790
     CHAMPION_1 = 12785,  -- 246
     CHAMPION_2 = 12786,  -- 250
@@ -183,6 +197,7 @@ local TRACK_BONUS_IDS = {
     MYTH_2     = 12802,  -- 276 (unconfirmed)
 }
 
+
 local ITEM_QUALITY_COLORS = {
     [0] = "ff9d9d9d", -- Poor
     [1] = "ffffffff", -- Common
@@ -191,6 +206,47 @@ local ITEM_QUALITY_COLORS = {
     [4] = "ffa335ee", -- Epic
     [5] = "ffff8000", -- Legendary
 }
+
+-- Reverse map: bonusID -> track name
+local BONUS_ID_TO_TRACK = {}
+for trackKey, bonusID in pairs(TRACK_BONUS_IDS) do
+    -- trackKey is like "CHAMPION_2", "HERO_1" etc — extract just the track name
+    local trackName = trackKey:match("^(%a+)_")
+    BONUS_ID_TO_TRACK[bonusID] = trackName
+end
+
+ns.TRACK_ORDER = {
+    ADVENTURER = 1,
+    VETERAN    = 2,
+    CHAMPION   = 3,
+    HERO       = 4,
+    MYTH       = 5,
+}
+
+-- Parses an item link string and returns the upgrade track name, or nil if unrecognized
+function ns:GetTrackFromItemLink(itemLink)
+    if not itemLink then return nil end
+    --print(itemLink:gsub('|', '||'))
+    -- extract the item: string from the hyperlink
+    local itemString = itemLink:match("|H(item:[^|]+)|h")
+    if not itemString then
+        -- might already be a bare item string
+        itemString = itemLink
+    end
+    local parts = {}
+    for part in (itemString .. ":"):gmatch("([^:]*):") do
+        table.insert(parts, part)
+    end
+    -- numBonuses is at position 14 (1-indexed), bonus IDs start at 15
+    local numBonuses = tonumber(parts[14]) or 0
+    for i = 1, numBonuses do
+        local bonusID = tonumber(parts[14 + i])
+        if bonusID and BONUS_ID_TO_TRACK[bonusID] then
+            return BONUS_ID_TO_TRACK[bonusID]
+        end
+    end
+    return nil
+end
 
 local function BuildItemLinkWithBonuses(itemID, trackBonusKey)
     if not itemID or not trackBonusKey then return nil end
