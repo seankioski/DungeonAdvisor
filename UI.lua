@@ -228,6 +228,12 @@ local function RenderDetailPanel(result)
     for _, detail in ipairs(result.upgradeDetails) do
         table.insert(sorted, detail)
     end
+    -- merge in stat-only upgrades
+    if result.statOnlyUpgrades then
+        for _, detail in ipairs(result.statOnlyUpgrades) do
+            table.insert(sorted, detail)
+        end
+    end
     table.sort(sorted, function(a, b)
         local orderA = SLOT_SORT_ORDER[a.label] or 99
         local orderB = SLOT_SORT_ORDER[b.label] or 99
@@ -287,12 +293,8 @@ local function RenderDetailPanel(result)
                     local dropRatio = ns:StatRatioScore(detail.stats)
                     local currentRatio = ns:StatRatioScore(detail.currentStats)
 
-                    if math.abs(dropRatio - currentRatio) < 0.01 then
-                        indicator = ""
-                    elseif dropRatio > currentRatio then
+                    if dropRatio > currentRatio + 0.01 then
                         indicator = "|cff00ffff+|r "
-                    elseif dropRatio < currentRatio then
-                        indicator = "|cffff44ff-|r " 
                     end
                 end
 

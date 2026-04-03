@@ -6,6 +6,7 @@
 -- make stat upgrades appear in the detailed into panel too. all loot there that is either ilvl or stat upgrade should show there
 -- only show green plus if it's an stat upgrade, dont show red minus
 -- also make sure header says stat upgrades too in the details panel
+-- dont show secondary for trinkets
 
 
 local addonName, ns = ...

@@ -345,7 +345,8 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     local totalStatScore = 0
     local totalSecondaryStatScore = 0
     local upgradeDetails = {}
-    local statUpgradeCount = 0 
+    local statUpgradeCount = 0
+    local statOnlyUpgrades = {}
 
     -- Group all drops by slot (no trimming here)
     local dropsBySlot = {}
@@ -461,6 +462,32 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                     secondaryStatScore = ns:SecondaryStatScore(stats, weights),
                     fromClient  = true,
                 })
+            else
+                -- not an ilvl upgrade — check if it's a stat upgrade over any slot
+                for _, current in ipairs(currentPieces) do
+                    local dropRatio = ns:StatRatioScore(ns.GetItemStatsCompat(drop.itemLink))
+                    local currentRatio = ns:StatRatioScore(current.stats)
+                    if dropRatio > currentRatio + 0.01 then
+                        local stats = ns.GetItemStatsCompat(drop.itemLink)
+                        local displayLabel = MULTI_SLOT_LABELS[slot] or current.label
+                        table.insert(statOnlyUpgrades, {
+                            slot         = current.key,
+                            label        = displayLabel,
+                            itemName     = drop.name,
+                            itemLink     = drop.itemLink,
+                            currentIlvl  = current.ilvl,
+                            currentStats = current.stats,
+                            dropIlvl     = drop.ilvl,
+                            gain         = 0,  -- no ilvl gain
+                            stats        = stats,
+                            secondaryStatScore = ns:SecondaryStatScore(stats, weights),
+                            currentSecondaryStatScore = current.secondaryStatScore,
+                            isStatOnlyUpgrade = true,  -- flag for UI to display differently
+                            fromClient   = true,
+                        })
+                        break  -- only add once per drop
+                    end
+                end
             end
         end
     end
@@ -494,7 +521,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     -- Sort upgrades: biggest ilvl gain first
     table.sort(upgradeDetails, function(a, b) return a.gain > b.gain end)
 
-    return score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, totalSecondaryStatScore, statUpgradeCount
+    return score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, totalSecondaryStatScore, statUpgradeCount, statOnlyUpgrades
 end
 
 --[[
@@ -570,7 +597,7 @@ function DungeonAdvisorCalc:RankDungeons()
         end
         --print(string.format("[DungeonAdvisor] %s: found %d drops for %s", selectedDiff, #drops, dungeonEntry.name or "unknown"))
         if #drops > 0 then
-            local score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, totalSecondaryStatScore, statUpgradeCount  = self:CalculateDungeonScore(drops, playerGear)
+            local score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, totalSecondaryStatScore, statUpgradeCount, statOnlyUpgrades  = self:CalculateDungeonScore(drops, playerGear)
             local avgStatScore = upgradeCount > 0 and (totalStatScore / upgradeCount) or 0
             local baseValue = (#drops > 0) and (totalIlvlGain / #drops) or 0
             local statMultiplier = 1 + totalSecondaryStatScore * 0.2
@@ -590,6 +617,7 @@ function DungeonAdvisorCalc:RankDungeons()
                 statMultiplier = statMultiplier,
                 upgradeDetails = upgradeDetails,
                 statUpgradeCount = statUpgradeCount,
+                statOnlyUpgrades  = statOnlyUpgrades,
             })
         end
     end
