@@ -17,59 +17,60 @@ local MIN_UPGRADE_DELTA = 1
 -- Stat weights per spec: how much each secondary stat matters (0.0 - 1.0).
 -- Rough SimC-inspired defaults. Players can adjust these in a future settings panel.
 -- Key format: "CLASS_SPECINDEX"
-DungeonAdvisorCalc.STAT_WEIGHTS = {
+DungeonAdvisorCalc.STAT_WEIGHTS = { --TODO did top row of classes from wowhead
     -- Warrior
-    WARRIOR_1 = { crit=1.0, haste=0.7, mastery=0.8, versatility=0.5 }, -- Arms
-    WARRIOR_2 = { crit=0.8, haste=1.0, mastery=0.6, versatility=0.5 }, -- Fury
-    WARRIOR_3 = { crit=0.6, haste=0.8, mastery=0.5, versatility=1.0 }, -- Protection
+    WARRIOR_1 = { crit=1.0, haste=0.9, mastery=0.8, versatility=0.5 }, -- Arms
+    WARRIOR_2 = { crit=1.0, haste=0.8, mastery=0.9, versatility=0.5 }, -- Fury
+    WARRIOR_3 = { crit=0.9, haste=1.0, mastery=0.5, versatility=0.8 }, -- Protection
     -- Paladin
-    PALADIN_1 = { crit=0.7, haste=1.0, mastery=0.6, versatility=0.5 }, -- Holy
-    PALADIN_2 = { crit=0.6, haste=0.8, mastery=0.5, versatility=1.0 }, -- Protection
-    PALADIN_3 = { crit=1.0, haste=0.8, mastery=0.7, versatility=0.5 }, -- Retribution
+    PALADIN_1 = { crit=0.9, haste=0.8, mastery=1.0, versatility=0.5 }, -- Holy
+    PALADIN_2 = { crit=0.75, haste=1.0, mastery=0.75, versatility=0.9 }, -- Protection
+    PALADIN_3 = { crit=0.9, haste=0.8, mastery=1.0, versatility=0.5 }, -- Retribution
     -- Death Knight
-    DEATHKNIGHT_1 = { crit=0.6, haste=0.8, mastery=1.0, versatility=0.5 }, -- Blood
-    DEATHKNIGHT_2 = { crit=1.0, haste=0.9, mastery=0.7, versatility=0.5 }, -- Frost
-    DEATHKNIGHT_3 = { crit=0.8, haste=0.7, mastery=1.0, versatility=0.5 }, -- Unholy
+    DEATHKNIGHT_1 = { crit=1.0, haste=1.0, mastery=1.0, versatility=1.0 }, -- Blood
+    DEATHKNIGHT_2 = { crit=1.0, haste=0.8, mastery=0.9, versatility=0.5 }, -- Frost
+    DEATHKNIGHT_3 = { crit=0.9, haste=0.8, mastery=1.0, versatility=0.5 }, -- Unholy
     -- Demon Hunter
-    DEMONHUNTER_1 = { crit=1.0, haste=0.8, mastery=0.5, versatility=0.6 }, -- Havoc
-    DEMONHUNTER_2 = { crit=0.5, haste=0.8, mastery=0.7, versatility=1.0 }, -- Vengeance
+    DEMONHUNTER_1 = { crit=1.0, haste=0.8, mastery=0.9, versatility=0.5 }, -- Havoc
+    DEMONHUNTER_2 = { crit=0.9, haste=1.0, mastery=0.5, versatility=0.8 }, -- Vengeance
+    DEMONHUNTER_3 = { crit=0.7, haste=1.0, mastery=0.9, versatility=0.5 }, -- Devourer
     -- Shaman
-    SHAMAN_1 = { crit=0.8, haste=1.0, mastery=0.7, versatility=0.5 }, -- Elemental
-    SHAMAN_2 = { crit=1.0, haste=0.9, mastery=0.8, versatility=0.5 }, -- Enhancement
-    SHAMAN_3 = { crit=0.6, haste=1.0, mastery=0.8, versatility=0.7 }, -- Restoration
+    SHAMAN_1 = { crit=0.8, haste=0.9, mastery=1.0, versatility=0.5 }, -- Elemental
+    SHAMAN_2 = { crit=0.8, haste=0.9, mastery=1.0, versatility=0.5 }, -- Enhancement
+    SHAMAN_3 = { crit=1.0, haste=0.5, mastery=0.8, versatility=0.9 }, -- Restoration
     -- Hunter
-    HUNTER_1 = { crit=0.8, haste=0.7, mastery=1.0, versatility=0.5 }, -- Beast Mastery
+    HUNTER_1 = { crit=0.8, haste=0.9, mastery=1.0, versatility=0.5 }, -- Beast Mastery
     HUNTER_2 = { crit=1.0, haste=0.8, mastery=0.6, versatility=0.5 }, -- Marksmanship
-    HUNTER_3 = { crit=0.9, haste=1.0, mastery=0.7, versatility=0.5 }, -- Survival
+    HUNTER_3 = { crit=1.0, haste=0.8, mastery=0.9, versatility=0.5 }, -- Survival
     -- Monk
-    MONK_1 = { crit=0.7, haste=1.0, mastery=0.8, versatility=0.6 }, -- Brewmaster
-    MONK_2 = { crit=0.6, haste=1.0, mastery=0.8, versatility=0.7 }, -- Mistweaver
-    MONK_3 = { crit=1.0, haste=0.8, mastery=0.7, versatility=0.5 }, -- Windwalker
+    MONK_1 = { crit=1.0, haste=0.6, mastery=0.95, versatility=0.9 }, -- Brewmaster
+    MONK_2 = { crit=0.9, haste=1.0, mastery=0.5, versatility=0.8 }, -- Mistweaver
+    MONK_3 = { crit=0.9, haste=1.0, mastery=0.8, versatility=0.5 }, -- Windwalker
     -- Druid
-    DRUID_1 = { crit=0.9, haste=1.0, mastery=0.7, versatility=0.5 }, -- Balance
-    DRUID_2 = { crit=1.0, haste=0.7, mastery=0.9, versatility=0.5 }, -- Feral
-    DRUID_3 = { crit=0.5, haste=0.8, mastery=1.0, versatility=0.7 }, -- Guardian
-    DRUID_4 = { crit=0.6, haste=1.0, mastery=0.8, versatility=0.7 }, -- Restoration
+    DRUID_1 = { crit=0.9, haste=0.8, mastery=1.0, versatility=0.5 }, -- Balance
+    DRUID_2 = { crit=0.9, haste=0.8, mastery=1.0, versatility=0.5 }, -- Feral
+    DRUID_3 = { crit=0.8, haste=1.0, mastery=0.5, versatility=0.9 }, -- Guardian
+    DRUID_4 = { crit=0.5, haste=1.0, mastery=0.9, versatility=0.8 }, -- Restoration
     -- Rogue
-    ROGUE_1 = { crit=1.0, haste=0.8, mastery=0.7, versatility=0.5 }, -- Assassination
-    ROGUE_2 = { crit=1.0, haste=0.9, mastery=0.6, versatility=0.5 }, -- Outlaw
-    ROGUE_3 = { crit=1.0, haste=0.8, mastery=0.9, versatility=0.5 }, -- Subtlety
+    ROGUE_1 = { crit=1.0, haste=0.9, mastery=0.8, versatility=0.5 }, -- Assassination
+    ROGUE_2 = { crit=0.9, haste=1.0, mastery=0.5, versatility=0.8 }, -- Outlaw
+    ROGUE_3 = { crit=0.8, haste=0.9, mastery=1.0, versatility=0.5 }, -- Subtlety
     -- Evoker
-    EVOKER_1 = { crit=0.9, haste=1.0, mastery=0.7, versatility=0.5 }, -- Devastation
-    EVOKER_2 = { crit=0.6, haste=1.0, mastery=0.8, versatility=0.7 }, -- Preservation
-    EVOKER_3 = { crit=0.8, haste=1.0, mastery=0.9, versatility=0.5 }, -- Augmentation
+    EVOKER_1 = { crit=1.0, haste=0.9, mastery=0.9, versatility=0.5 }, -- Devastation
+    EVOKER_2 = { crit=0.9, haste=0.9, mastery=1.0, versatility=0.5 }, -- Preservation
+    EVOKER_3 = { crit=1.0, haste=0.9, mastery=0.8, versatility=0.5 }, -- Augmentation
     -- Mage
-    MAGE_1 = { crit=0.8, haste=1.0, mastery=0.7, versatility=0.5 }, -- Arcane
-    MAGE_2 = { crit=1.0, haste=0.9, mastery=0.7, versatility=0.5 }, -- Fire
-    MAGE_3 = { crit=1.0, haste=0.8, mastery=0.7, versatility=0.5 }, -- Frost
+    MAGE_1 = { crit=0.9, haste=0.8, mastery=1.0, versatility=0.7 }, -- Arcane
+    MAGE_2 = { crit=0.7, haste=1.0, mastery=0.9, versatility=0.8 }, -- Fire
+    MAGE_3 = { crit=0.9, haste=0.8, mastery=1.0, versatility=0.7 }, -- Frost
     -- Warlock
-    WARLOCK_1 = { crit=0.8, haste=1.0, mastery=0.7, versatility=0.5 }, -- Affliction
-    WARLOCK_2 = { crit=1.0, haste=0.8, mastery=0.9, versatility=0.5 }, -- Demonology
-    WARLOCK_3 = { crit=1.0, haste=0.9, mastery=0.7, versatility=0.5 }, -- Destruction
+    WARLOCK_1 = { crit=0.9, haste=0.8, mastery=1.0, versatility=0.5 }, -- Affliction
+    WARLOCK_2 = { crit=1.0, haste=1.0, mastery=0.8, versatility=0.5 }, -- Demonology
+    WARLOCK_3 = { crit=0.8, haste=1.0, mastery=0.9, versatility=0.5 }, -- Destruction
     -- Priest
-    PRIEST_1 = { crit=0.7, haste=1.0, mastery=0.8, versatility=0.6 }, -- Discipline
-    PRIEST_2 = { crit=0.6, haste=1.0, mastery=0.8, versatility=0.7 }, -- Holy
-    PRIEST_3 = { crit=1.0, haste=0.8, mastery=0.9, versatility=0.5 }, -- Shadow
+    PRIEST_1 = { crit=0.9, haste=1.0, mastery=0.8, versatility=0.5 }, -- Discipline
+    PRIEST_2 = { crit=1.0, haste=0.8, mastery=0.9, versatility=0.9 }, -- Holy
+    PRIEST_3 = { crit=0.8, haste=1.0, mastery=0.9, versatility=0.5 }, -- Shadow
 }
 
 -- Default weights for unknown specs
