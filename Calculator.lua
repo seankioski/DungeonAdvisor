@@ -478,134 +478,99 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
             end
         end
 
-        -- Second pass: count ALL drops that beat any equipped piece
+        -- Find everything that is either an ilvl upgrade, a stat upgrade, or a track upgrade
+        -- Track how many of each upgrade happens here
         for _, drop in ipairs(drops) do
-            for _, current in ipairs(currentPieces) do
-                if drop.ilvl - current.ilvl >= MIN_UPGRADE_DELTA then
-                    upgradeCount = upgradeCount + 1
-                    break  -- count each drop once even if it beats both slots
-                end
-            end
-        end
+            local dropStats = ns.GetItemStatsCompat(drop.itemLink)
+            local dropTrack = ns:GetTrackFromItemLink(drop.itemLink)
+            local dropTrackOrder = dropTrack and ns.TRACK_ORDER[dropTrack] or 0
+            local dropRatio = ns:StatRatioScore(dropStats)
 
-        -- DISPLAY: show every drop that is an upgrade over any equipped piece
-        for _, drop in ipairs(drops) do
-            -- Find the best slot this drop would upgrade (weakest piece it beats)
-            local bestCurrent = nil
+            local isIlvlUpgrade  = false
+            local isStatUpgrade  = false
+            local isTrackUpgrade = false
+            local bestIlvlCurrent  = nil  -- weakest piece this beats on ilvl
+            local worstTrackCurrent = nil  -- lowest track piece (for track comparison)
+
             for _, current in ipairs(currentPieces) do
-                local gain = drop.ilvl - current.ilvl
-                if gain >= MIN_UPGRADE_DELTA then
-                    -- Prefer showing it replacing the weakest piece it upgrades
-                    if not bestCurrent or current.ilvl < bestCurrent.ilvl then
-                        bestCurrent = current
+                local currentTrackOrder = current.track and ns.TRACK_ORDER[current.track] or 0
+
+                -- track: find the WORST track piece — that's what we'd replace
+                if not worstTrackCurrent then
+                    worstTrackCurrent = current
+                else
+                    local worstTrackOrder = worstTrackCurrent.track and ns.TRACK_ORDER[worstTrackCurrent.track] or 0
+                    if currentTrackOrder < worstTrackOrder then
+                        worstTrackCurrent = current
                     end
                 end
             end
 
-            if bestCurrent then
-                local gain  = drop.ilvl - bestCurrent.ilvl
-                local stats = ns.GetItemStatsCompat(drop.itemLink)
+            -- track upgrade if it beats the worst track you have in this slot
+            if worstTrackCurrent then
+                local worstTrackOrder = worstTrackCurrent.track and ns.TRACK_ORDER[worstTrackCurrent.track] or 0
+                if dropTrackOrder > worstTrackOrder then
+                    isTrackUpgrade = true
+                end
+            end
 
-                -- track upgrade check
-                local dropTrack    = ns:GetTrackFromItemLink(drop.itemLink)
-                local currentTrack = bestCurrent.track
-                local dropTrackOrder    = dropTrack    and ns.TRACK_ORDER[dropTrack]    or 0
-                local currentTrackOrder = currentTrack and ns.TRACK_ORDER[currentTrack] or 0
-                local isTrackUpgrade = dropTrackOrder > currentTrackOrder
+            for _, current in ipairs(currentPieces) do
+                local currentTrackOrder = current.track and ns.TRACK_ORDER[current.track] or 0
+                local currentRatio = ns:StatRatioScore(current.stats)
 
-                if isTrackUpgrade then
-                    trackUpgradeCount = trackUpgradeCount + 1
+                -- ilvl: beats the weakest piece
+                if (drop.ilvl - current.ilvl) >= MIN_UPGRADE_DELTA then
+                    isIlvlUpgrade = true
+                    if not bestIlvlCurrent or current.ilvl < bestIlvlCurrent.ilvl then
+                        bestIlvlCurrent = current
+                    end
                 end
 
-                -- For multi-slots (rings/trinkets), show generic label instead of "Trinket 1"/"Ring 1"
-                local displayLabel = MULTI_SLOT_LABELS[slot] or bestCurrent.label
-                local dropRatio = ns:StatRatioScore(ns.GetItemStatsCompat(drop.itemLink))
-                local currentRatio = ns:StatRatioScore(bestCurrent.stats)
+                -- stat: beats any piece
                 if dropRatio > currentRatio + 0.01 then
-                    --print(string.format("aStat upgrade found: %s (%.2f) > %s (%.2f)", drop.name, dropRatio, bestCurrent.label, currentRatio))
-                    --Only count the stat upgrade if it isn't an ignored tier piece
-                    if not DungeonAdvisorCharDB.ignoreTiers[bestCurrent.key] then
-                        statUpgradeCount = statUpgradeCount + 1
-                    end
+                    isStatUpgrade = true
                 end
+            end
 
-                --print("BestCurrent stats: ")
-                table.insert(upgradeDetails, {
-                    slot        = bestCurrent.key,
-                    label       = displayLabel,
-                    itemName    = drop.name,
-                    itemLink    = drop.itemLink,
-                    currentIlvl = bestCurrent.ilvl,
-                    currentSecondaryStatScore = bestCurrent.secondaryStatScore,
-                    dropIlvl    = drop.ilvl,
-                    gain        = gain,
-                    stats       = stats,
-                    currentStats = bestCurrent.stats,
-                    secondaryStatScore = ns:SecondaryStatScore(stats, weights),
-                    dropTrack        = dropTrack,
-                    currentTrack     = currentTrack,
-                    isTrackUpgrade   = isTrackUpgrade,
-                    fromClient  = true,
+            -- track upgrade only if it beats the highest track in this slot
+            if worstTrackCurrent then
+                local worstTrackOrder = worstTrackCurrent.track and ns.TRACK_ORDER[worstTrackCurrent.track] or 0
+                if dropTrackOrder > worstTrackOrder then
+                    isTrackUpgrade = true
+                end
+            end
+
+            if isIlvlUpgrade or isStatUpgrade or isTrackUpgrade then
+                -- use weakest ilvl piece as display reference, fall back to best track piece
+                local displayCurrent = bestIlvlCurrent or worstTrackCurrent
+                local ignoredSlot = DungeonAdvisorCharDB.ignoreTiers[displayCurrent.key]
+                local displayLabel = MULTI_SLOT_LABELS[slot] or displayCurrent.label
+                local gain = drop.ilvl - displayCurrent.ilvl
+
+                if isIlvlUpgrade then upgradeCount = upgradeCount + 1 end
+                if isStatUpgrade  and not ignoredSlot then statUpgradeCount  = statUpgradeCount  + 1 end
+                if isTrackUpgrade and not ignoredSlot then trackUpgradeCount = trackUpgradeCount + 1 end
+
+                local targetList = isIlvlUpgrade and upgradeDetails or statOnlyUpgrades
+                table.insert(targetList, {
+                    slot          = displayCurrent.key,
+                    label         = displayLabel,
+                    itemName      = drop.name,
+                    itemLink      = drop.itemLink,
+                    currentIlvl   = displayCurrent.ilvl,
+                    dropIlvl      = drop.ilvl,
+                    gain          = isIlvlUpgrade and gain or 0,
+                    stats         = dropStats,
+                    currentStats  = displayCurrent.stats,
+                    secondaryStatScore        = ns:SecondaryStatScore(dropStats, weights),
+                    currentSecondaryStatScore = displayCurrent.secondaryStatScore,
+                    dropTrack     = dropTrack,
+                    currentTrack  = worstTrackCurrent and worstTrackCurrent.track or nil,
+                    isTrackUpgrade = isTrackUpgrade,
+                    isStatUpgrade  = isStatUpgrade,
+                    fromClient    = true,
                 })
             end
-
-            for _, current in ipairs(currentPieces) do
-                -- Don't process this at all if this drop was already added
-                if not HasItemLink(statOnlyUpgrades, drop.itemLink) then
-                    
-                    -- track upgrade check
-                    local dropTrack    = ns:GetTrackFromItemLink(drop.itemLink)
-                    local currentTrack = current.track
-                    local dropTrackOrder    = dropTrack    and ns.TRACK_ORDER[dropTrack]    or 0
-                    local currentTrackOrder = currentTrack and ns.TRACK_ORDER[currentTrack] or 0
-                    local isTrackUpgrade = dropTrackOrder > currentTrackOrder
-
-                    if isTrackUpgrade then
-                        trackUpgradeCount = trackUpgradeCount + 1
-                    end
-                    
-                    local dropRatio = ns:StatRatioScore(ns.GetItemStatsCompat(drop.itemLink))
-                    local currentRatio = ns:StatRatioScore(current.stats)
-
-                    local isStatUpgrade = dropRatio > currentRatio + 0.01
-
-                    if isStatUpgrade or isTrackUpgrade then
-                        --Don't add this if it already exists in upgradeDetails to avoid duplicates, but if it's a pure stat upgrade with no ilvl gain, it won't be in there so we need to add it as a separate entry
-                        if not HasItemLink(upgradeDetails, drop.itemLink) then
-                            local stats = ns.GetItemStatsCompat(drop.itemLink)
-                            local displayLabel = MULTI_SLOT_LABELS[slot] or current.label
-
-                            
-
-                            --print(string.format("bStat upgrade found: %s (%.2f) > %s (%.2f)", drop.name, dropRatio, current.label, currentRatio))
-                            if current.key ~= "TRINKET" and not DungeonAdvisorCharDB.ignoreTiers[current.key] then
-                                statUpgradeCount = statUpgradeCount + 1
-                            end
-                            if isTrackUpgrade then
-                                print(string.format("Track upgrade found: %s (Track: %s) > %s (Track: %s)", drop.name, dropTrack or "None", current.label, currentTrack or "None"))
-                            end
-                            table.insert(statOnlyUpgrades, {
-                                slot         = current.key,
-                                label        = displayLabel,
-                                itemName     = drop.name,
-                                itemLink     = drop.itemLink,
-                                currentIlvl  = current.ilvl,
-                                currentStats = current.stats,
-                                dropIlvl     = drop.ilvl,
-                                gain         = 0,  -- no ilvl gain
-                                stats        = stats,
-                                secondaryStatScore = ns:SecondaryStatScore(stats, weights),
-                                currentSecondaryStatScore = current.secondaryStatScore,
-                                dropTrack = dropTrack,
-                                currentTrack = currentTrack,
-                                fromClient   = true,
-                            })
-                            break  -- only add once per drop
-                        end
-                    end
-                end
-            end
-            
         end
     end
 
@@ -613,7 +578,9 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     statUpgradeCount = statUpgradeCount + weaponStatUpgradeCount
     trackUpgradeCount = trackUpgradeCount + weaponTrackUpgradeCount
     for _, wu in ipairs(weaponUpgrades) do
-        upgradeCount  = upgradeCount + 1
+        if wu.gain > 0 then
+            upgradeCount  = upgradeCount + 1
+        end
 
         local statScore = StatScore({ itemLink = wu.itemLink }, weights)
         local secondaryScore = ns:SecondaryStatScore(ns.GetItemStatsCompat(wu.itemLink), weights)

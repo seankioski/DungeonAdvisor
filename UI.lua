@@ -289,6 +289,9 @@ local function RenderDetailPanel(result)
     if result.statUpgradeCount > 0 then
         AddLine(string.format("%d stat upgrades", result.statUpgradeCount), 0.2, 1, 0.2)
     end
+    if result.trackUpgradeCount > 0 then
+        AddLine(string.format("%d track upgrades", result.trackUpgradeCount), 0.2, 1, 0.2)
+    end
     AddLine(" ")
 
     local sorted = {}
@@ -356,30 +359,33 @@ local function RenderDetailPanel(result)
                 end
             end
 
-            if #parts > 0 then
-                local indicator = ""
-                if detail.stats and weights then
-                    -- normalize weights to proportions
-                    local totalWeight = 0
-                    for _, w in pairs(weights) do totalWeight = totalWeight + w end
+            local indicator = ""
+            if detail.stats and weights then
+                -- normalize weights to proportions
+                local totalWeight = 0
+                for _, w in pairs(weights) do totalWeight = totalWeight + w end
 
-                    local dropRatio = ns:StatRatioScore(detail.stats)
-                    local currentRatio = ns:StatRatioScore(detail.currentStats)
+                local dropRatio = ns:StatRatioScore(detail.stats)
+                local currentRatio = ns:StatRatioScore(detail.currentStats)
 
-                    if dropRatio > currentRatio + 0.01 then
-                        if detail.slot ~= "TRINKET" and not DungeonAdvisorCharDB.ignoreTiers[detail.slot] then
-                            indicator = "|cff00ff00+++|r "
-                        end
+                if dropRatio > currentRatio + 0.01 then
+                    if not DungeonAdvisorCharDB.ignoreTiers[detail.slot] and not ns:startsWith(detail.slot, "TRINKET") then
+                        indicator = "|cff00ff00+++|r "
                     end
                 end
-
-                local trackTag = ""
-                if detail.isTrackUpgrade and detail.dropTrack then
-                    trackTag = string.format(" |cff00ff00[%s]|r", detail.dropTrack)
-                end
-
-                AddLine(indicator .. table.concat(parts, " · ") .. trackTag, 1, 1, 1, 14, "small")
             end
+
+            local trackTag = ""
+            if detail.isTrackUpgrade and detail.dropTrack then
+                trackTag = string.format(" |cff00ff00[%s]|r", detail.dropTrack)
+            end
+
+            local partsText = ""
+            if #parts > 0 then
+                partsText = table.concat(parts, " · ")
+            end
+
+            AddLine(indicator .. partsText .. trackTag, 1, 1, 1, 14, "small")
         end
     end
 

@@ -1,10 +1,6 @@
 --TODO
---add filter for champ vs hero upgrades
--- add filter for tier set slot track upgrades
--- make the efficiency calc be simpler and be some combination of ilvl upgrades percent and total level, and also stat upgrades chances
--- also make sure header says stat upgrades too in the details panel
---update formulas and the formula breakdown
-
+-- sometimes loading indicator gets stuck forever
+-- only m10 loads, m8 doesnt!
 
 local addonName, ns = ...
 
@@ -32,7 +28,7 @@ DungeonAdvisor.version = "1.0.2"
 DungeonAdvisorLootDB = {}
 
 -- Tuneable weights
-W_ILVL_DENSITY  = 0.60  -- how much raw ilvl gain per drop matters
+W_ILVL_DENSITY  = 0.40  -- how much raw ilvl gain per drop matters
 W_UPGRADE_RATE  = 4  -- how often you actually get an upgrade
 W_STAT_QUALITY  = 4  -- how often the upgrade also has good stats
 W_TRACK  = 7  -- how often the upgrade also has good stats
@@ -61,6 +57,11 @@ DungeonAdvisor.EXTRA_SLOTS = {
     FINGER2  = { id = 12, slot = "FINGER", label = "Ring 2" },
     TRINKET2 = { id = 14, slot = "TRINKET", label = "Trinket 2" },
 }
+
+function ns:startsWith(str, start)
+    if not start then return false end
+    return str:sub(1, #start) == start
+end
 
 function ns:DetectLootSpec()
     local className, classFile, classID = UnitClass("player")

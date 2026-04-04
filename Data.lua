@@ -195,6 +195,10 @@ local TRACK_BONUS_IDS = {
     -- Myth track: 12801+ (unconfirmed, follows 2-ID gap pattern)
     MYTH_1     = 12801,  -- 272 (unconfirmed)
     MYTH_2     = 12802,  -- 276 (unconfirmed)
+    MYTH_3     = 12803,  -- 276 (unconfirmed)
+    MYTH_4     = 12804,  -- 276 (unconfirmed)
+    MYTH_5     = 12805,  -- 276 (unconfirmed)
+    MYTH_6     = 12806,  -- 276 (unconfirmed)
 }
 
 
