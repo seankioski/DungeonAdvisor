@@ -1,6 +1,5 @@
 --TODO
--- sometimes loading indicator gets stuck forever
--- only m10 loads, m8 doesnt!
+-- fix default weights, at least get some rough data from wowhead or something
 
 local addonName, ns = ...
 
@@ -22,7 +21,7 @@ ns.state = {
 -- Initializes the addon and reads character gear via WoW API
 
 DungeonAdvisor = {}
-DungeonAdvisor.version = "1.0.2"
+DungeonAdvisor.version = "1.0.3"
 
 -- Global loot database (populated at PLAYER_LOGIN)
 DungeonAdvisorLootDB = {}

@@ -463,7 +463,7 @@ local function BuildDungeonRows(scrollChild, results)
     headerDrops:SetTextColor(1, 1, 1)
     AttachHeaderTooltip(headerDrops, scrollChild,
         "% Upgrades",
-        "How many of this dungeon's drops are an upgrade for you.\n(Upgrades / Total drops).")
+        "How many of this dungeon's drops are an iLvl upgrade for you.\n(Upgrades / Total drops).")
 
     local headerStatUpgrades = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     headerStatUpgrades:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 490, headerY)
@@ -920,6 +920,7 @@ function DungeonAdvisorUI:Create()
     scanBtn:SetText("Rescan Gear")
     scanBtn:SetScript("OnClick", function()
         DungeonAdvisorUI:Refresh()
+        DungeonAdvisorUI:HideSpinner()
     end)
 
     -- Detail panel (right side)

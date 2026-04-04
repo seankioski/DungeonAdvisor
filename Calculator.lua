@@ -180,7 +180,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
             local stats = ns.GetItemStatsCompat(drop.itemLink)
             local dropRatio = ns:StatRatioScore(stats)
             local currentRatio = ns:StatRatioScore(mhStats)
-            local isStatUpgrade = dropRatio > currentRatio + 0.01
+            
 
             -- track upgrade check
             local dropTrack    = ns:GetTrackFromItemLink(drop.itemLink)
@@ -188,6 +188,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
             local dropTrackOrder    = dropTrack    and ns.TRACK_ORDER[dropTrack]    or 0
             local currentTrackOrder = currentTrack and ns.TRACK_ORDER[currentTrack] or 0
             local isTrackUpgrade = dropTrackOrder > currentTrackOrder
+            local isStatUpgrade = dropTrackOrder >= currentTrackOrder and dropRatio > currentRatio + 0.01
 
             if isTrackUpgrade then
                 trackUpgradeCount = trackUpgradeCount + 1
@@ -223,7 +224,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
             local stats = ns.GetItemStatsCompat(drop.itemLink)
             local dropRatio = ns:StatRatioScore(stats)
             local currentRatio = ns:StatRatioScore(mhStats)
-            local isStatUpgrade = dropRatio > currentRatio + 0.01
+            
 
             -- track upgrade check
             local dropTrack    = ns:GetTrackFromItemLink(drop.itemLink)
@@ -231,6 +232,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
             local dropTrackOrder    = dropTrack    and ns.TRACK_ORDER[dropTrack]    or 0
             local currentTrackOrder = currentTrack and ns.TRACK_ORDER[currentTrack] or 0
             local isTrackUpgrade = dropTrackOrder > currentTrackOrder
+            local isStatUpgrade = dropTrackOrder >= currentTrackOrder and dropRatio > currentRatio + 0.01
 
             if isTrackUpgrade then
                 trackUpgradeCount = trackUpgradeCount + 1
@@ -268,7 +270,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
             local stats = ns.GetItemStatsCompat(drop.itemLink)
             local dropRatio = ns:StatRatioScore(stats)
             local currentRatio = ns:StatRatioScore(ohStats)
-            local isStatUpgrade = dropRatio > currentRatio + 0.01
+            
             
             -- track upgrade check
             local dropTrack    = ns:GetTrackFromItemLink(drop.itemLink)
@@ -276,6 +278,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
             local dropTrackOrder    = dropTrack    and ns.TRACK_ORDER[dropTrack]    or 0
             local currentTrackOrder = currentTrack and ns.TRACK_ORDER[currentTrack] or 0
             local isTrackUpgrade = dropTrackOrder > currentTrackOrder
+            local isStatUpgrade = dropTrackOrder >= currentTrackOrder and dropRatio > currentRatio + 0.01
 
             if isTrackUpgrade then
                 trackUpgradeCount = trackUpgradeCount + 1
@@ -506,14 +509,6 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                 end
             end
 
-            -- track upgrade if it beats the worst track you have in this slot
-            if worstTrackCurrent then
-                local worstTrackOrder = worstTrackCurrent.track and ns.TRACK_ORDER[worstTrackCurrent.track] or 0
-                if dropTrackOrder > worstTrackOrder then
-                    isTrackUpgrade = true
-                end
-            end
-
             for _, current in ipairs(currentPieces) do
                 local currentTrackOrder = current.track and ns.TRACK_ORDER[current.track] or 0
                 local currentRatio = ns:StatRatioScore(current.stats)
@@ -526,9 +521,27 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                     end
                 end
 
-                -- stat: beats any piece
-                if dropRatio > currentRatio + 0.01 then
+                -- stat: beats any piece, but only if drop track is same or better
+                if dropRatio > currentRatio + 0.01 and dropTrackOrder >= currentTrackOrder and not ns:startsWith(current.key, "TRINKET") then
                     isStatUpgrade = true
+                end
+
+                -- track: find worst track piece
+                if not worstTrackCurrent then
+                    worstTrackCurrent = current
+                else
+                    local worstTrackOrder = worstTrackCurrent.track and ns.TRACK_ORDER[worstTrackCurrent.track] or 0
+                    if currentTrackOrder < worstTrackOrder then
+                        worstTrackCurrent = current
+                    end
+                end
+            end
+
+            -- track upgrade only if it beats the worst track in this slot
+            if worstTrackCurrent then
+                local worstTrackOrder = worstTrackCurrent.track and ns.TRACK_ORDER[worstTrackCurrent.track] or 0
+                if dropTrackOrder > worstTrackOrder then
+                    isTrackUpgrade = true
                 end
             end
 
@@ -552,6 +565,8 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                 if isTrackUpgrade and not ignoredSlot then trackUpgradeCount = trackUpgradeCount + 1 end
 
                 local targetList = isIlvlUpgrade and upgradeDetails or statOnlyUpgrades
+                print(string.format("Upgrade found: %s (ilvl %d) -> %s (ilvl %d), gain=%.1f, statUpgrade=%s, trackUpgrade=%s",
+                    displayCurrent.label, displayCurrent.ilvl, drop.name, drop.ilvl, gain, tostring(isStatUpgrade), tostring(isTrackUpgrade)))
                 table.insert(targetList, {
                     slot          = displayCurrent.key,
                     label         = displayLabel,
