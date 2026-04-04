@@ -138,6 +138,16 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
     local allOH   = {}
     local all2H   = {}
 
+    -- Count ALL weapon drops for percentage purposes regardless of mode
+    local allWeaponDrops = {}
+    for _, drop in ipairs(all2H) do table.insert(allWeaponDrops, drop) end
+    for _, drop in ipairs(all1H) do table.insert(allWeaponDrops, drop) end
+    for _, drop in ipairs(allOH) do table.insert(allWeaponDrops, drop) end
+
+    -- total drop count should include all weapon types
+    -- (return this alongside upgrades so RankDungeons can use it for percentages)
+    local totalWeaponDropCount = #allWeaponDrops
+
     for _, drop in ipairs(drops) do
         local is2H = drop.itemType == "Weapon" and (
             drop.itemSubType == "Two-Handed Swords" or
@@ -316,7 +326,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
         scoringGain = gain1H
     end
 
-    return upgrades, scoringGain, statUpgradeCount, trackUpgradeCount
+    return upgrades, scoringGain, statUpgradeCount, trackUpgradeCount, totalWeaponDropCount
 end
 
 
@@ -566,8 +576,6 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                 if isTrackUpgrade and not ignoredSlot then trackUpgradeCount = trackUpgradeCount + 1 end
 
                 local targetList = isIlvlUpgrade and upgradeDetails or statOnlyUpgrades
-                print(string.format("Upgrade found: %s (ilvl %d) -> %s (ilvl %d), gain=%.1f, statUpgrade=%s, trackUpgrade=%s",
-                    displayCurrent.label, displayCurrent.ilvl, drop.name, drop.ilvl, gain, tostring(isStatUpgrade), tostring(isTrackUpgrade)))
                 table.insert(targetList, {
                     slot          = displayCurrent.key,
                     label         = displayLabel,
@@ -590,13 +598,11 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
         end
     end
 
-    local weaponUpgrades, weaponScoringGain, weaponStatUpgradeCount, weaponTrackUpgradeCount = ScoreWeaponLoadout(weaponDrops, playerGear, weights)
+    local weaponUpgrades, weaponScoringGain, weaponStatUpgradeCount, weaponTrackUpgradeCount, totalWeaponDrops = ScoreWeaponLoadout(weaponDrops, playerGear, weights)
     statUpgradeCount = statUpgradeCount + weaponStatUpgradeCount
     trackUpgradeCount = trackUpgradeCount + weaponTrackUpgradeCount
     for _, wu in ipairs(weaponUpgrades) do
-        if wu.gain > 0 then
-            upgradeCount  = upgradeCount + 1
-        end
+        upgradeCount = upgradeCount + totalWeaponDrops
 
         local statScore = StatScore({ itemLink = wu.itemLink }, weights)
         local secondaryScore = ns:SecondaryStatScore(ns.GetItemStatsCompat(wu.itemLink), weights)
