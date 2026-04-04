@@ -1,5 +1,4 @@
 --TODO
--- fix default weights, at least get some rough data from wowhead or something
 
 local addonName, ns = ...
 

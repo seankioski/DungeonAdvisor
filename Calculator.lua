@@ -138,16 +138,6 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
     local allOH   = {}
     local all2H   = {}
 
-    -- Count ALL weapon drops for percentage purposes regardless of mode
-    local allWeaponDrops = {}
-    for _, drop in ipairs(all2H) do table.insert(allWeaponDrops, drop) end
-    for _, drop in ipairs(all1H) do table.insert(allWeaponDrops, drop) end
-    for _, drop in ipairs(allOH) do table.insert(allWeaponDrops, drop) end
-
-    -- total drop count should include all weapon types
-    -- (return this alongside upgrades so RankDungeons can use it for percentages)
-    local totalWeaponDropCount = #allWeaponDrops
-
     for _, drop in ipairs(drops) do
         local is2H = drop.itemType == "Weapon" and (
             drop.itemSubType == "Two-Handed Swords" or
@@ -598,11 +588,13 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
         end
     end
 
-    local weaponUpgrades, weaponScoringGain, weaponStatUpgradeCount, weaponTrackUpgradeCount, totalWeaponDrops = ScoreWeaponLoadout(weaponDrops, playerGear, weights)
+    local weaponUpgrades, weaponScoringGain, weaponStatUpgradeCount, weaponTrackUpgradeCount = ScoreWeaponLoadout(weaponDrops, playerGear, weights)
     statUpgradeCount = statUpgradeCount + weaponStatUpgradeCount
     trackUpgradeCount = trackUpgradeCount + weaponTrackUpgradeCount
     for _, wu in ipairs(weaponUpgrades) do
-        upgradeCount = upgradeCount + totalWeaponDrops
+        if wu.gain > 0 then
+            upgradeCount  = upgradeCount + 1
+        end
 
         local statScore = StatScore({ itemLink = wu.itemLink }, weights)
         local secondaryScore = ns:SecondaryStatScore(ns.GetItemStatsCompat(wu.itemLink), weights)
@@ -715,7 +707,7 @@ function DungeonAdvisorCalc:RankDungeons()
             local trackQuality  = trackUpgradeCount / #drops * W_TRACK -- fraction of drops that are stat upgrades
             
             local efficiency = ilvlDensity + upgradeRate + statQuality + trackQuality
-            
+
             table.insert(results, {
                 name           = dungeonEntry.name,
                 score          = score,
