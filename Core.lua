@@ -1,4 +1,6 @@
 --TODO
+-- add tooltips over various headers on how to use some things like weapon mode and tier slot ignores and what stat wieghts are used for
+
 
 local addonName, ns = ...
 

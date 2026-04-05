@@ -779,7 +779,7 @@ local function UpdateDifficultyButtonHighlights()
 end
 
 local function CreateDifficultyButtons(parent)
-    local yOffset = -60  -- Start below the title
+    local yOffset = 0  -- Start below the title
     for i, diff in ipairs(ns.DIFFICULTIES.DUNGEON) do
         local button = CreateFrame("Button", nil, parent)
         button:SetSize(120, 25)  -- Width matches old dropdown, height for readability
@@ -909,6 +909,11 @@ function DungeonAdvisorUI:Create()
     local difficultySidebarBg = configSidebar:CreateTexture(nil, "BACKGROUND")
     difficultySidebarBg:SetAllPoints()
     difficultySidebarBg:SetColorTexture(0.1, 0.1, 0.1, 0.3)  -- Dark background for separation
+
+    -- "Select Difficulty" on difficultySidebar
+    local selectDifficultyText = difficultySidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    selectDifficultyText:SetPoint("TOP", difficultySidebar, "TOP", 0, -10)
+    selectDifficultyText:SetText("Select Difficulty")
 
     -- Add difficulty buttons to the configSidebar
     CreateDifficultyButtons(difficultySidebar)
