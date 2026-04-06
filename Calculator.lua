@@ -117,6 +117,7 @@ end
 
 -- Handle weapons separately
 local function ScoreWeaponLoadout(drops, playerGear, weights)
+    local upgradeCount = 0
     local statUpgradeCount = 0
     local trackUpgradeCount = 0
     local MAINHAND_SLOT = 16
@@ -170,142 +171,79 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
         gain1H = gain1H + math.max(0, bestOH.ilvl - currentOHilvl)
     end
     local score2HWins = gain2H > gain1H
-
     local upgrades = {}
     local scoringGain = 0
 
-    if weaponMode == "2H" then
-        -- Always show ALL upgrades regardless of which loadout wins scoring
-        for _, drop in ipairs(all2H) do
-            local gain = math.max(drop.ilvl - math.max(currentMHilvl, currentOHilvl), 0)
-            local stats = ns.GetItemStatsCompat(drop.itemLink)
-            local dropRatio = ns:StatRatioScore(stats)
-            local currentRatio = ns:StatRatioScore(mhStats)
-            
+    -- process all weapon types regardless of mode
+    local function ProcessWeaponDrop(drop, compareIlvl, compareStats, compareTrack, slotKey, slotLabel)
+        local gain = drop.ilvl - compareIlvl
+        local stats = ns.GetItemStatsCompat(drop.itemLink)
+        local dropRatio = ns:StatRatioScore(stats)
+        local currentRatio = ns:StatRatioScore(compareStats)
+        local dropTrack = ns:GetTrackFromItemLink(drop.itemLink)
+        local dropTrackOrder = dropTrack and ns.TRACK_ORDER[dropTrack] or 0
+        local compareTrackOrder = compareTrack and ns.TRACK_ORDER[compareTrack] or 0
 
-            -- track upgrade check
-            local dropTrack    = ns:GetTrackFromItemLink(drop.itemLink)
-            local currentTrack = currentMH.track
-            local dropTrackOrder    = dropTrack    and ns.TRACK_ORDER[dropTrack]    or 0
-            local currentTrackOrder = currentTrack and ns.TRACK_ORDER[currentTrack] or 0
-            local isTrackUpgrade = dropTrackOrder > currentTrackOrder
-            local isStatUpgrade = dropTrackOrder >= currentTrackOrder and dropRatio > currentRatio + 0.01
+        local isIlvlUpgrade  = gain >= MIN_UPGRADE_DELTA
+        local isTrackUpgrade = dropTrackOrder > compareTrackOrder
+        local isStatUpgrade  = dropTrackOrder >= compareTrackOrder and dropRatio > currentRatio + 0.01
 
-            if isTrackUpgrade then
-                trackUpgradeCount = trackUpgradeCount + 1
-            end
+        if isIlvlUpgrade  then upgradeCount     = upgradeCount     + 1 end
+        if isTrackUpgrade then trackUpgradeCount = trackUpgradeCount + 1 end
+        if isStatUpgrade  then statUpgradeCount  = statUpgradeCount  + 1 end
 
-            if playerUsing2H and isStatUpgrade then
-                statUpgradeCount = statUpgradeCount + 1
-            end
-            
-            if gain >= MIN_UPGRADE_DELTA or isStatUpgrade then
-                table.insert(upgrades, {
-                    slot        = "MAINHAND",
-                    label       = currentMH and currentMH.label or "Main Hand",
-                    itemName    = drop.name,
-                    currentIlvl = math.max(currentMHilvl, currentOHilvl),
-                    dropIlvl    = drop.ilvl,
-                    gain        = gain,
-                    itemLink    = drop.itemLink,
-                    stats       = ns.GetItemStatsCompat(drop.itemLink),
-                    secondaryStatScore = ns:SecondaryStatScore(stats, weights),
-                    currentSecondaryStatScore = ns:SecondaryStatScore(mhStats, weights),
-                    dropTrack        = dropTrack,
-                    currentTrack     = currentTrack,
-                    isTrackUpgrade   = isTrackUpgrade,
-                    fromClient  = true,
-                })
-            end
+        if isIlvlUpgrade or isTrackUpgrade or isStatUpgrade then
+            table.insert(upgrades, {
+                slot          = slotKey,
+                label         = slotLabel,
+                itemName      = drop.name,
+                currentIlvl   = compareIlvl,
+                dropIlvl      = drop.ilvl,
+                gain          = isIlvlUpgrade and gain or 0,
+                itemLink      = drop.itemLink,
+                stats         = stats,
+                secondaryStatScore        = ns:SecondaryStatScore(stats, weights),
+                currentSecondaryStatScore = ns:SecondaryStatScore(compareStats, weights),
+                dropTrack     = dropTrack,
+                currentTrack  = compareTrack,
+                isTrackUpgrade = isTrackUpgrade,
+                isStatUpgrade  = isStatUpgrade,
+                fromClient    = true,
+            })
         end
-    else
+    end
 
+    -- 2H weapons compare against best of MH+OH ilvl
+    --And always count for ilvl upgrades
+    for _, drop in ipairs(all2H) do
+        ProcessWeaponDrop(drop,
+            math.max(currentMHilvl, currentOHilvl),
+            mhStats,
+            currentMH and currentMH.track,
+            "MAINHAND",
+            currentMH and currentMH.label or "Main Hand")
+    end
+
+    -- Only count 1h/offhand as viable drops if we're in 1h mode
+    if weaponMode ~= "2H" then
+        -- 1H weapons compare against MH
         for _, drop in ipairs(all1H) do
-            local gain = drop.ilvl - currentMHilvl
-            local stats = ns.GetItemStatsCompat(drop.itemLink)
-            local dropRatio = ns:StatRatioScore(stats)
-            local currentRatio = ns:StatRatioScore(mhStats)
-            
-
-            -- track upgrade check
-            local dropTrack    = ns:GetTrackFromItemLink(drop.itemLink)
-            local currentTrack = currentMH.track
-            local dropTrackOrder    = dropTrack    and ns.TRACK_ORDER[dropTrack]    or 0
-            local currentTrackOrder = currentTrack and ns.TRACK_ORDER[currentTrack] or 0
-            local isTrackUpgrade = dropTrackOrder > currentTrackOrder
-            local isStatUpgrade = dropTrackOrder >= currentTrackOrder and dropRatio > currentRatio + 0.01
-
-            if isTrackUpgrade then
-                trackUpgradeCount = trackUpgradeCount + 1
-            end
-
-            if not playerUsing2H and dropRatio > currentRatio + 0.01 then
-                statUpgradeCount = statUpgradeCount + 1
-            end
-
-            if gain >= MIN_UPGRADE_DELTA or isStatUpgrade then
-                table.insert(upgrades, {
-                    slot        = "MAINHAND",
-                    label       = currentMH and currentMH.label or "Main Hand",
-                    itemName    = drop.name,
-                    currentIlvl = currentMHilvl,
-                    dropIlvl    = drop.ilvl,
-                    gain        = gain,
-                    itemLink    = drop.itemLink,
-                    stats       = ns.GetItemStatsCompat(drop.itemLink),
-                    secondaryStatScore = ns:SecondaryStatScore(stats, weights),
-                    currentSecondaryStatScore = ns:SecondaryStatScore(mhStats, weights),
-                    dropTrack        = dropTrack,
-                    currentTrack     = currentTrack,
-                    isTrackUpgrade   = isTrackUpgrade,
-                    fromClient  = true,
-                })
-            end
+            ProcessWeaponDrop(drop,
+                currentMHilvl,
+                mhStats,
+                currentMH and currentMH.track,
+                "MAINHAND",
+                currentMH and currentMH.label or "Main Hand")
         end
 
+        -- offhands compare against OH
         for _, drop in ipairs(allOH) do
-            -- If player uses 2H, an offhand is only an upgrade if the 1H+OH
-            -- combo would beat the current 2H, so compare against 2H ilvl
-            local compareIlvl = playerUsing2H and currentMHilvl or currentOHilvl
-            local gain = drop.ilvl - compareIlvl
-            local stats = ns.GetItemStatsCompat(drop.itemLink)
-            local dropRatio = ns:StatRatioScore(stats)
-            local currentRatio = ns:StatRatioScore(ohStats)
-            
-            
-            -- track upgrade check
-            local dropTrack    = ns:GetTrackFromItemLink(drop.itemLink)
-            local currentTrack = currentOH.track
-            local dropTrackOrder    = dropTrack    and ns.TRACK_ORDER[dropTrack]    or 0
-            local currentTrackOrder = currentTrack and ns.TRACK_ORDER[currentTrack] or 0
-            local isTrackUpgrade = dropTrackOrder > currentTrackOrder
-            local isStatUpgrade = dropTrackOrder >= currentTrackOrder and dropRatio > currentRatio + 0.01
-
-            if isTrackUpgrade then
-                trackUpgradeCount = trackUpgradeCount + 1
-            end
-
-            if not playerUsing2H and dropRatio > currentRatio + 0.01 then
-                statUpgradeCount = statUpgradeCount + 1
-            end
-            if gain >= MIN_UPGRADE_DELTA or isStatUpgrade then
-                table.insert(upgrades, {
-                    slot        = "OFFHAND",
-                    label       = "Off Hand",
-                    itemName    = drop.name,
-                    currentIlvl = compareIlvl,  -- show the real comparison in UI
-                    dropIlvl    = drop.ilvl,
-                    gain        = gain,
-                    itemLink    = drop.itemLink,
-                    stats       = stats,
-                    secondaryStatScore = ns:SecondaryStatScore(stats, weights),
-                    currentSecondaryStatScore = ns:SecondaryStatScore(ohStats, weights),
-                    dropTrack        = dropTrack,
-                    currentTrack     = currentTrack,
-                    isTrackUpgrade   = isTrackUpgrade,
-                    fromClient  = true,
-                })
-            end
+            ProcessWeaponDrop(drop,
+                currentOHilvl,
+                ohStats,
+                currentOH and currentOH.track,
+                "OFFHAND",
+                "Off Hand")
         end
     end
 
@@ -316,7 +254,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
         scoringGain = gain1H
     end
 
-    return upgrades, scoringGain, statUpgradeCount, trackUpgradeCount, totalWeaponDropCount
+    return upgrades, scoringGain
 end
 
 
@@ -563,7 +501,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
 
                 if isIlvlUpgrade then upgradeCount = upgradeCount + 1 end
                 if isStatUpgrade  and not ignoredSlot then statUpgradeCount  = statUpgradeCount  + 1 end
-                if isTrackUpgrade and not ignoredSlot then trackUpgradeCount = trackUpgradeCount + 1 end
+                if isTrackUpgrade then trackUpgradeCount = trackUpgradeCount + 1 end
 
                 local targetList = isIlvlUpgrade and upgradeDetails or statOnlyUpgrades
                 table.insert(targetList, {
@@ -588,12 +526,16 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
         end
     end
 
-    local weaponUpgrades, weaponScoringGain, weaponStatUpgradeCount, weaponTrackUpgradeCount = ScoreWeaponLoadout(weaponDrops, playerGear, weights)
-    statUpgradeCount = statUpgradeCount + weaponStatUpgradeCount
-    trackUpgradeCount = trackUpgradeCount + weaponTrackUpgradeCount
+    local weaponUpgrades, weaponScoringGain = ScoreWeaponLoadout(weaponDrops, playerGear, weights)
     for _, wu in ipairs(weaponUpgrades) do
         if wu.gain > 0 then
             upgradeCount  = upgradeCount + 1
+        end
+        if wu.isStatUpgrade then
+            statUpgradeCount = statUpgradeCount + 1
+        end
+        if wu.isTrackUpgrade then
+            trackUpgradeCount = trackUpgradeCount + 1
         end
 
         local statScore = StatScore({ itemLink = wu.itemLink }, weights)

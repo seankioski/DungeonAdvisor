@@ -277,7 +277,7 @@ local function RenderDetailPanel(result)
     local weights = ns:GetSpecWeights()
 
     if not result then
-        AddLine("\n\n\n\n\n\n\n\n\n\n\n\n\n\n        Hover over a dungeon to preview details", 0.6, 0.6, 0.6)
+        AddLine("\n\n\n\n\n\n\n\n\n\n\n\n\n\n        Hover over or click a dungeon to see details", 0.6, 0.6, 0.6)
         return
     end
 
@@ -870,6 +870,10 @@ function DungeonAdvisorUI:Create()
     local statWeightText = configSidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     statWeightText:SetPoint("TOP", configSidebar, "TOP", 0, -50)
     statWeightText:SetText("Stat Weights")
+    AttachHeaderTooltip(statWeightText, configSidebar,
+        "Stat Weights",
+        "Stat weights are for determining which items are Stat Upgrades.\n\nA stat upgrade has a better ratio of secondary stats.")
+
 
     CreateIgnoreTierInputs(configSidebar)
 
@@ -877,23 +881,31 @@ function DungeonAdvisorUI:Create()
     local ignoreTierText = configSidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     ignoreTierText:SetPoint("TOP", configSidebar, "TOP", 0, -190)
     ignoreTierText:SetText("Ignore Tier Slots")
+    AttachHeaderTooltip(ignoreTierText, configSidebar,
+        "Ignore Tier Slots",
+        "Check the slots which you wear tier items.\n\nIgnored slots do not count for stat upgrades because you will always wear tier in these chosen slots.\n\niLvl and track upgrades are still counted for these slots.")
+
 
     -- "Weapon Mode" on configSidebar
     local weaponModeText = configSidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     weaponModeText:SetPoint("TOP", configSidebar, "TOP", 0, -360)
     weaponModeText:SetText("Weapon Mode")
+    AttachHeaderTooltip(weaponModeText, configSidebar,
+        "Weapon Mode",
+        "2H Only - will only consider 2-handed weapons for any upgrade.\n\nAll - Will consider 1-handed/offhand items for all upgrades, as well as 2-handed weapons for iLvl upgrades (since 2H weapons save crests on all weapon upgrades)")
+
 
     local radioGroup = {}
-    local r1 = CreateRadioButton(configSidebar, "2H", radioGroup, function(val)
+    local r1 = CreateRadioButton(configSidebar, "2H Only", radioGroup, function(val)
         weaponMode = "2H"
         DungeonAdvisorUI:RefreshDungeonList()
     end)
-    local r2 = CreateRadioButton(configSidebar, "1H", radioGroup, function(val)
+    local r2 = CreateRadioButton(configSidebar, "All", radioGroup, function(val)
         weaponMode = "1H"
         DungeonAdvisorUI:RefreshDungeonList()
     end)
-    r1:SetPoint("TOPLEFT", 10, -370)
-    r2:SetPoint("TOPRIGHT", -30, -370)
+    r1:SetPoint("TOPLEFT", 0, -370)
+    r2:SetPoint("TOPRIGHT", -20, -370)
     if playerUsing2H then
         r1:SetChecked(true)
     else
