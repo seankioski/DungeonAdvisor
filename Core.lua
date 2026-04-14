@@ -22,7 +22,7 @@ ns.state = {
 -- Initializes the addon and reads character gear via WoW API
 
 DungeonAdvisor = {}
-DungeonAdvisor.version = "1.0.4"
+DungeonAdvisor.version = "1.0.6"
 
 -- Global loot database (populated at PLAYER_LOGIN)
 DungeonAdvisorLootDB = {}
@@ -147,7 +147,7 @@ end
 
 -- Returns a table of { slotName -> currentIlvl } for the player
 playerUsing2H = false
-weaponMode = "2H"
+weaponMode = ""
 function DungeonAdvisor:GetEquippedGear()
     local weights = ns:GetSpecWeights()
     local gear = {}
@@ -173,6 +173,13 @@ function DungeonAdvisor:GetEquippedGear()
                     itemSubType == "Guns"         or
                     itemSubType == "Crossbows"
                 )
+                if weaponMode == "" then
+                    if playerUsing2H then
+                        weaponMode = "2H"
+                    else
+                        weaponMode = "1H"
+                    end
+                end
             end
 
             local stats = ns.GetItemStatsCompat(itemLink)
@@ -183,6 +190,7 @@ function DungeonAdvisor:GetEquippedGear()
                 secondaryStatScore = ns:SecondaryStatScore(stats, weights),
                 stats = stats,
                 track = ns:GetTrackFromItemLink(itemLink),
+                isCrafted = ns:IsCraftedItem(itemLink),
             }
         else
             gear[key] = { ilvl = 0, secondaryStatScore = 0,name = "Empty", label = slotInfo.label }

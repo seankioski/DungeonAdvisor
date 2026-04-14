@@ -227,6 +227,25 @@ ns.TRACK_ORDER = {
     MYTH       = 5,
 }
 
+function ns:IsCraftedItem(itemLink)
+    if not itemLink then return false end
+    local CRAFTED_BONUS_IDS = { [523] = true, [8960] = true }
+    local itemString = itemLink:match("|H(item:[^|]+)|h") or itemLink
+
+    local parts = {}
+    for p in (itemString..":"):gmatch("([^:]*):") do
+        table.insert(parts, p)
+    end
+
+    -- parts[1] = "item", parts[2] = itemID, so bonus count is at index 15
+    local numBonuses = tonumber(parts[15]) or 0
+    for i = 1, numBonuses do
+        local bonusID = tonumber(parts[15 + i])
+        if CRAFTED_BONUS_IDS[bonusID] then return true end
+    end
+    return false
+end
+
 -- Parses an item link string and returns the upgrade track name, or nil if unrecognized
 function ns:GetTrackFromItemLink(itemLink)
     if not itemLink then return nil end

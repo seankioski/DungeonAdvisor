@@ -131,6 +131,8 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
     local currentOH     = playerGear["OFFHAND"]
     local currentMHilvl = currentMH and currentMH.ilvl or 0
     local currentOHilvl = playerUsing2H and 0 or (currentOH and currentOH.ilvl or 0)
+    local currentMHisCrafted = currentMH and currentMH.isCrafted or false
+    local currentOHisCrafted = currentOH and currentOH.isCrafted or false
 
     local best2H  = nil
     local best1H  = nil
@@ -150,7 +152,9 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
             drop.itemSubType == "Guns"              or
             drop.itemSubType == "Crossbows"
         )
-        if is2H then
+        if ns:IsCraftedItem(drop.itemLink) then
+        -- skip crafted drops entirely
+        elseif is2H then
             table.insert(all2H, drop)
             if not best2H or drop.ilvl > best2H.ilvl then best2H = drop end
         elseif drop.slot == "OFFHAND" then
@@ -175,19 +179,19 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
     local scoringGain = 0
 
     -- process all weapon types regardless of mode
-    local function ProcessWeaponDrop(drop, compareIlvl, compareStats, compareTrack, slotKey, slotLabel)
+    local function ProcessWeaponDrop(drop, compareIlvl, compareStats, compareTrack, compareIsCrafted, slotKey, slotLabel)
         local gain = drop.ilvl - compareIlvl
         local stats = ns.GetItemStatsCompat(drop.itemLink)
         local dropRatio = ns:StatRatioScore(stats)
         local currentRatio = ns:StatRatioScore(compareStats)
         local dropTrack = ns:GetTrackFromItemLink(drop.itemLink)
         local dropTrackOrder = dropTrack and ns.TRACK_ORDER[dropTrack] or 0
-        local compareTrackOrder = compareTrack and ns.TRACK_ORDER[compareTrack] or 0
+        local compareTrackOrder = (not compareIsCrafted and compareTrack) and ns.TRACK_ORDER[compareTrack] or 0
 
         local isIlvlUpgrade  = gain >= MIN_UPGRADE_DELTA
-        local isTrackUpgrade = dropTrackOrder > compareTrackOrder
-        local isStatUpgrade  = dropTrackOrder >= compareTrackOrder and dropRatio > currentRatio + 0.01
-
+        local isTrackUpgrade = (not compareIsCrafted) and (dropTrackOrder > compareTrackOrder)
+        local isStatUpgrade  = (not compareIsCrafted) and (dropTrackOrder >= compareTrackOrder) and (dropRatio > currentRatio + 0.01)
+    
         if isIlvlUpgrade  then upgradeCount     = upgradeCount     + 1 end
         if isTrackUpgrade then trackUpgradeCount = trackUpgradeCount + 1 end
         if isStatUpgrade  then statUpgradeCount  = statUpgradeCount  + 1 end
@@ -220,6 +224,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
             math.max(currentMHilvl, currentOHilvl),
             mhStats,
             currentMH and currentMH.track,
+            currentMHisCrafted,
             "MAINHAND",
             currentMH and currentMH.label or "Main Hand")
     end
@@ -232,6 +237,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
                 currentMHilvl,
                 mhStats,
                 currentMH and currentMH.track,
+                currentMHisCrafted,
                 "MAINHAND",
                 currentMH and currentMH.label or "Main Hand")
         end
@@ -242,6 +248,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
                 currentOHilvl,
                 ohStats,
                 currentOH and currentOH.track,
+                currentOHisCrafted,
                 "OFFHAND",
                 "Off Hand")
         end
@@ -386,7 +393,8 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                 label = current and current.label or gearKey,
                 secondaryStatScore = current.secondaryStatScore,
                 stats = current.stats,
-                track = current and current.track or nil,
+                track = (current and not current.isCrafted) and current.track or nil,
+                isCrafted = current and current.isCrafted or false
             })
         end
         table.sort(currentPieces, function(a, b) return a.ilvl < b.ilvl end)
@@ -437,13 +445,15 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
             for _, current in ipairs(currentPieces) do
                 local currentTrackOrder = current.track and ns.TRACK_ORDER[current.track] or 0
 
-                -- track: find the WORST track piece — that's what we'd replace
-                if not worstTrackCurrent then
-                    worstTrackCurrent = current
-                else
-                    local worstTrackOrder = worstTrackCurrent.track and ns.TRACK_ORDER[worstTrackCurrent.track] or 0
-                    if currentTrackOrder < worstTrackOrder then
+                if not current.isCrafted then
+                    -- track: find the WORST track piece — that's what we'd replace
+                    if not worstTrackCurrent then
                         worstTrackCurrent = current
+                    else
+                        local worstTrackOrder = worstTrackCurrent.track and ns.TRACK_ORDER[worstTrackCurrent.track] or 0
+                        if currentTrackOrder < worstTrackOrder then
+                            worstTrackCurrent = current
+                        end
                     end
                 end
             end
@@ -465,13 +475,15 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                     isStatUpgrade = true
                 end
 
-                -- track: find worst track piece
-                if not worstTrackCurrent then
-                    worstTrackCurrent = current
-                else
-                    local worstTrackOrder = worstTrackCurrent.track and ns.TRACK_ORDER[worstTrackCurrent.track] or 0
-                    if currentTrackOrder < worstTrackOrder then
+                    -- track: find worst track piece
+                if not current.isCrafted then
+                    if not worstTrackCurrent then
                         worstTrackCurrent = current
+                    else
+                        local worstTrackOrder = worstTrackCurrent.track and ns.TRACK_ORDER[worstTrackCurrent.track] or 0
+                        if currentTrackOrder < worstTrackOrder then
+                            worstTrackCurrent = current
+                        end
                     end
                 end
             end
