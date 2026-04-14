@@ -1,7 +1,3 @@
---TODO
--- add tooltips over various headers on how to use some things like weapon mode and tier slot ignores and what stat wieghts are used for
-
-
 local addonName, ns = ...
 
 ns.state = {
@@ -12,9 +8,6 @@ ns.state = {
     selectedClassFile = nil,
     selectedSpecName  = nil,
     isViewingOtherClass = false,
-    selectedStats     = {},    -- stat keys, max 2
-    showingChart      = false,
-    vaultMode         = false,
     selectedDifficulty = "M+10",  -- Default difficulty
 }
 
@@ -23,9 +16,7 @@ ns.state = {
 
 DungeonAdvisor = {}
 DungeonAdvisor.version = "1.0.6"
-
--- Global loot database (populated at PLAYER_LOGIN)
-DungeonAdvisorLootDB = {}
+DungeonAdvisorLootDB = {} -- Global loot database (populated at PLAYER_LOGIN)
 
 -- Tuneable weights
 W_ILVL_DENSITY  = 0.40  -- how much raw ilvl gain per drop matters
@@ -94,33 +85,22 @@ function ns:DetectLootSpec()
     end
 
     ns.state.selectedSpecName = select(2, GetSpecializationInfo(ns.state.selectedSpecIndex)) or ""
-
-    --print(string.format("|cff00ccff[DungeonAdvisor]|r Detected loot spec |cffFFD700%s %s|r.", ns.state.selectedSpecName, ns.playerClassName))
 end
 
 -- Get the stat weight table for the current player spec
 function ns:GetSpecWeights()
     local key = ns.state.selectedClassName:upper() .. "_" .. ns.state.selectedSpecIndex
-    if not DungeonAdvisorDB.weights then
-        DungeonAdvisorDB.weights = {}
-    end
-    --See if the DB has custom weights for this spec, otherwise return defaults
-    if DungeonAdvisorDB.weights[key] then
-        return DungeonAdvisorDB.weights[key]
-    else
-        return DungeonAdvisorCalc.STAT_WEIGHTS[key] or DungeonAdvisorCalc.DEFAULT_WEIGHTS
-    end
+    DungeonAdvisorDB.weights = DungeonAdvisorDB.weights or {}
+    return DungeonAdvisorDB.weights[key]
+        or DungeonAdvisorCalc.STAT_WEIGHTS[key]
+        or DungeonAdvisorCalc.DEFAULT_WEIGHTS
 end
 
 local function TablesEqual(a, b)
     if a == b then return true end
     if not a or not b then return false end
-    for k, v in pairs(a) do
-        if b[k] ~= v then return false end
-    end
-    for k, v in pairs(b) do
-        if a[k] ~= v then return false end
-    end
+    for k, v in pairs(a) do if b[k] ~= v then return false end end
+    for k, v in pairs(b) do if a[k] ~= v then return false end end
     return true
 end
 
@@ -148,69 +128,58 @@ end
 -- Returns a table of { slotName -> currentIlvl } for the player
 playerUsing2H = false
 weaponMode = ""
+
+local function BuildGearEntry(itemLink, label, weights)
+    local _, _, _, ilvl = GetItemInfo(itemLink)
+    local stats = ns.GetItemStatsCompat(itemLink)
+    return {
+        ilvl               = ilvl or 0,
+        name               = GetItemInfo(itemLink) or "Unknown",
+        label              = label,
+        secondaryStatScore = ns:SecondaryStatScore(stats, weights),
+        stats              = stats,
+        track              = ns:GetTrackFromItemLink(itemLink),
+        isCrafted          = ns:IsCraftedItem(itemLink),
+    }
+end
+
 function DungeonAdvisor:GetEquippedGear()
     local weights = ns:GetSpecWeights()
-    local gear = {}
+    local gear    = {}
 
-    
     for slotName, slotInfo in pairs(self.SLOTS) do
+        local key      = (slotName == "FINGER") and "FINGER1"
+                      or (slotName == "TRINKET") and "TRINKET1"
+                      or slotName
         local itemLink = GetInventoryItemLink("player", slotInfo.id)
-        -- Rename base finger/trinket to FINGER1/TRINKET1 for consistency
-        local key = slotName
-        if slotName == "FINGER" then key = "FINGER1" end
-        if slotName == "TRINKET" then key = "TRINKET1" end
 
         if itemLink then
-            local _, _, _, ilvl, _, itemType, itemSubType = GetItemInfo(itemLink)
-            if itemType == "Weapon" then
-                playerUsing2H = (
-                    itemSubType == "Two-Handed Swords" or
-                    itemSubType == "Two-Handed Axes"   or
-                    itemSubType == "Two-Handed Maces"  or
-                    itemSubType == "Polearms"          or
-                    itemSubType == "Staves"            or
-                    itemSubType == "Bows"         or
-                    itemSubType == "Guns"         or
-                    itemSubType == "Crossbows"
-                )
-                if weaponMode == "" then
-                    if playerUsing2H then
-                        weaponMode = "2H"
-                    else
-                        weaponMode = "1H"
-                    end
+            gear[key] = BuildGearEntry(itemLink, slotInfo.label, weights)
+
+            if slotName == "MAINHAND" and weaponMode == "" then
+                local _, _, _, _, _, itemType, itemSubType = GetItemInfo(itemLink)
+                if itemType == "Weapon" then
+                    local is2H = itemSubType == "Two-Handed Swords"
+                             or  itemSubType == "Two-Handed Axes"
+                             or  itemSubType == "Two-Handed Maces"
+                             or  itemSubType == "Polearms"
+                             or  itemSubType == "Staves"
+                             or  itemSubType == "Bows"
+                             or  itemSubType == "Guns"
+                             or  itemSubType == "Crossbows"
+                    playerUsing2H = is2H
+                    weaponMode    = is2H and "2H" or "1H"
                 end
             end
-
-            local stats = ns.GetItemStatsCompat(itemLink)
-            gear[key] = {
-                ilvl  = ilvl,
-                name  = GetItemInfo(itemLink) or "Unknown",
-                label = slotInfo.label,
-                secondaryStatScore = ns:SecondaryStatScore(stats, weights),
-                stats = stats,
-                track = ns:GetTrackFromItemLink(itemLink),
-                isCrafted = ns:IsCraftedItem(itemLink),
-            }
         else
-            gear[key] = { ilvl = 0, secondaryStatScore = 0,name = "Empty", label = slotInfo.label }
+            gear[key] = { ilvl = 0, secondaryStatScore = 0, name = "Empty", label = slotInfo.label }
         end
     end
 
-    -- Store second ring and trinket as their own entries
     for extraName, extraInfo in pairs(self.EXTRA_SLOTS) do
         local itemLink = GetInventoryItemLink("player", extraInfo.id)
         if itemLink then
-            local ilvl = select(4, GetItemInfo(itemLink)) or 0
-            local stats = ns.GetItemStatsCompat(itemLink)
-            gear[extraName] = {
-                ilvl  = ilvl,
-                name  = GetItemInfo(itemLink) or "Unknown",
-                label = extraInfo.label,
-                secondaryStatScore = ns:SecondaryStatScore(stats, weights),
-                stats = stats,
-                track = ns:GetTrackFromItemLink(itemLink),
-            }
+            gear[extraName] = BuildGearEntry(itemLink, extraInfo.label, weights)
         else
             gear[extraName] = { ilvl = 0, secondaryStatScore = 0, name = "Empty", label = extraInfo.label }
         end
@@ -240,11 +209,10 @@ eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
-        DungeonAdvisorDB = DungeonAdvisorDB or {}
+        DungeonAdvisorDB     = DungeonAdvisorDB     or {}
         DungeonAdvisorCharDB = DungeonAdvisorCharDB or {}
         print("|cff00ccff[DungeonAdvisor]|r Loaded! Type |cffFFD700/da|r to open.")
-    end
-    if event == "PLAYER_ENTERING_WORLD" then
+    elseif event == "PLAYER_ENTERING_WORLD" then
         ns:DetectLootSpec()
         DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear()
     end

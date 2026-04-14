@@ -97,22 +97,47 @@ DungeonAdvisorCalc.STAT_KEY_MAP = {
 
 function ns:StatRatioScore(stats)
     if not stats then return 0 end
-    local weights = ns:GetSpecWeights()
-    local totalStats = 0
-    for shortKey, _ in pairs(weights) do
-        local wowKey = DungeonAdvisorCalc.STAT_KEY_MAP[shortKey]
-        if wowKey then totalStats = totalStats + (stats[wowKey] or 0) end
-    end
-    if totalStats == 0 then return 0 end
-    local score = 0
+    local weights     = ns:GetSpecWeights()
+    local totalStats  = 0
     local totalWeight = 0
-    for _, w in pairs(weights) do totalWeight = totalWeight + w end
     for shortKey, w in pairs(weights) do
         local wowKey = DungeonAdvisorCalc.STAT_KEY_MAP[shortKey]
+        if wowKey then totalStats = totalStats + (stats[wowKey] or 0) end
+        totalWeight = totalWeight + w
+    end
+    if totalStats == 0 or totalWeight == 0 then return 0 end
+    local score = 0
+    for shortKey, w in pairs(weights) do
+        local wowKey   = DungeonAdvisorCalc.STAT_KEY_MAP[shortKey]
         local statProp = wowKey and ((stats[wowKey] or 0) / totalStats) or 0
         score = score + statProp * (w / totalWeight)
     end
     return score
+end
+
+local function StatScore(drop, weights)
+    local stats = ns.GetItemStatsCompat(drop.itemLink)
+    if not stats then return 0 end
+    local total      = 0
+    local maxPossible = 0
+    for weightKey, weight in pairs(weights) do
+        local wowStatKey = DungeonAdvisorCalc.STAT_KEY_MAP[weightKey]
+        if wowStatKey then
+            total       = total       + (stats[wowStatKey] or 0) * weight
+            maxPossible = maxPossible + 350 * weight
+        end
+    end
+    if maxPossible == 0 then return 0 end
+    return math.min(total / maxPossible, 1.0)
+end
+
+function ns:SecondaryStatScore(stats, weights)
+    if not stats then return 0 end
+    return
+        (stats["ITEM_MOD_CRIT_RATING_SHORT"] or 0)    * (weights.crit or 0) +
+        (stats["ITEM_MOD_HASTE_RATING_SHORT"] or 0)   * (weights.haste or 0) +
+        (stats["ITEM_MOD_MASTERY_RATING_SHORT"] or 0) * (weights.mastery or 0) +
+        (stats["ITEM_MOD_VERSATILITY"] or 0)    * (weights.versatility or 0)
 end
 
 -- Handle weapons separately
@@ -174,7 +199,6 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
     if bestOH and not playerUsing2H then
         gain1H = gain1H + math.max(0, bestOH.ilvl - currentOHilvl)
     end
-    local score2HWins = gain2H > gain1H
     local upgrades = {}
     local scoringGain = 0
 
@@ -264,44 +288,6 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
     return upgrades, scoringGain
 end
 
-
--- Compute a weighted stat score for a drop (0.0 - 1.0 range)
-local function StatScore(drop, weights)
-    local stats = ns.GetItemStatsCompat(drop.itemLink)
-    if not stats then return 0 end
-    local total = 0
-    local maxPossible = 0
-
-    for weightKey, weight in pairs(weights) do
-        local wowStatKey = DungeonAdvisorCalc.STAT_KEY_MAP[weightKey]
-        if wowStatKey then
-            local val = stats[wowStatKey] or 0
-            total = total + val * weight
-            maxPossible = maxPossible + 350 * weight  -- 350 is a rough ceiling for a single secondary
-        end
-    end
-    if maxPossible == 0 then return 0 end
-    return math.min(total / maxPossible, 1.0)
-end
-
-function ns:SecondaryStatScore(stats, weights)
-    if not stats then return 0 end
-    return
-        (stats["ITEM_MOD_CRIT_RATING_SHORT"] or 0)    * (weights.crit or 0) +
-        (stats["ITEM_MOD_HASTE_RATING_SHORT"] or 0)   * (weights.haste or 0) +
-        (stats["ITEM_MOD_MASTERY_RATING_SHORT"] or 0) * (weights.mastery or 0) +
-        (stats["ITEM_MOD_VERSATILITY"] or 0)    * (weights.versatility or 0)
-end
-
-local function HasItemLink(tbl, itemLink)
-    for _, entry in ipairs(tbl) do
-        if entry.itemLink == itemLink then
-            return true
-        end
-    end
-    return false
-end
-
 --[[
     CalculateDungeonScore(dungeonDrops, playerGear)
     Returns:
@@ -330,27 +316,6 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
             table.insert(weaponDrops, drop)
         else
             table.insert(armorDrops, drop)
-        end
-    end
-
-    -- For each slot, find the best drops (up to the max count for that slot)
-    local bestDropsPerSlot = {}
-    for _, drop in ipairs(armorDrops) do
-        local slot = drop.slot
-        local maxCount = MULTI_SLOTS[slot] or 1
-        if not bestDropsPerSlot[slot] then
-            bestDropsPerSlot[slot] = {}
-        end
-        local list = bestDropsPerSlot[slot]
-        table.insert(list, drop)
-        -- Sort descending by ilvl, then stat score on tie
-        table.sort(list, function(a, b)
-            if a.ilvl ~= b.ilvl then return a.ilvl > b.ilvl end
-            return CachedStatScore(a) > CachedStatScore(b)
-        end)
-        -- Trim to max allowed
-        while #list > maxCount do
-            table.remove(list)
         end
     end
 
@@ -399,9 +364,6 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
         end
         table.sort(currentPieces, function(a, b) return a.ilvl < b.ilvl end)
 
-        local weakestIlvl  = currentPieces[1].ilvl
-        local strongestIlvl = currentPieces[maxCount].ilvl
-
         -- SCORING: count every drop that upgrades any equipped piece,
         -- but only sum ilvl gain for the best maxCount assignments to avoid inflation
         local usedDrops = {}
@@ -444,22 +406,6 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
 
             for _, current in ipairs(currentPieces) do
                 local currentTrackOrder = current.track and ns.TRACK_ORDER[current.track] or 0
-
-                if not current.isCrafted then
-                    -- track: find the WORST track piece — that's what we'd replace
-                    if not worstTrackCurrent then
-                        worstTrackCurrent = current
-                    else
-                        local worstTrackOrder = worstTrackCurrent.track and ns.TRACK_ORDER[worstTrackCurrent.track] or 0
-                        if currentTrackOrder < worstTrackOrder then
-                            worstTrackCurrent = current
-                        end
-                    end
-                end
-            end
-
-            for _, current in ipairs(currentPieces) do
-                local currentTrackOrder = current.track and ns.TRACK_ORDER[current.track] or 0
                 local currentRatio = ns:StatRatioScore(current.stats)
 
                 -- ilvl: beats the weakest piece
@@ -489,14 +435,6 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
             end
 
             -- track upgrade only if it beats the worst track in this slot
-            if worstTrackCurrent then
-                local worstTrackOrder = worstTrackCurrent.track and ns.TRACK_ORDER[worstTrackCurrent.track] or 0
-                if dropTrackOrder > worstTrackOrder then
-                    isTrackUpgrade = true
-                end
-            end
-
-            -- track upgrade only if it beats the highest track in this slot
             if worstTrackCurrent then
                 local worstTrackOrder = worstTrackCurrent.track and ns.TRACK_ORDER[worstTrackCurrent.track] or 0
                 if dropTrackOrder > worstTrackOrder then
