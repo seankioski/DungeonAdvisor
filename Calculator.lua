@@ -6,11 +6,6 @@ local addonName, ns = ...
 
 DungeonAdvisorCalc = {}
 
--- Scoring weights (must sum to 1.0)
-local WEIGHT_UPGRADE_COUNT = 0.40  -- how many slots have an upgrade
-local WEIGHT_ILVL_GAIN     = 0.40  -- total ilvl gain across all upgrade slots
-local WEIGHT_STATS         = 0.20  -- secondary stat quality of upgrades
-
 -- Minimum ilvl gain to count as an "upgrade"
 local MIN_UPGRADE_DELTA = 1
 
@@ -155,7 +150,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
     local currentMH     = playerGear["MAINHAND"]
     local currentOH     = playerGear["OFFHAND"]
     local currentMHilvl = currentMH and currentMH.ilvl or 0
-    local currentOHilvl = playerUsing2H and 0 or (currentOH and currentOH.ilvl or 0)
+    local currentOHilvl = ns.playerUsing2H and 0 or (currentOH and currentOH.ilvl or 0)
     local currentMHisCrafted = currentMH and currentMH.isCrafted or false
     local currentOHisCrafted = currentOH and currentOH.isCrafted or false
 
@@ -192,11 +187,11 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
     end
 
     -- Determine which loadout wins for SCORING purposes only
-    local current2Hilvl = playerUsing2H and currentMHilvl or math.max(currentMHilvl, currentOHilvl)
+    local current2Hilvl = ns.playerUsing2H and currentMHilvl or math.max(currentMHilvl, currentOHilvl)
     local gain2H = best2H and math.max(0, best2H.ilvl - current2Hilvl) or 0
     local gain1H = 0
     if best1H then gain1H = gain1H + math.max(0, best1H.ilvl - currentMHilvl) end
-    if bestOH and not playerUsing2H then
+    if bestOH and not ns.playerUsing2H then
         gain1H = gain1H + math.max(0, bestOH.ilvl - currentOHilvl)
     end
     local upgrades = {}
@@ -254,7 +249,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
     end
 
     -- Only count 1h/offhand as viable drops if we're in 1h mode
-    if weaponMode ~= "2H" then
+    if ns.weaponMode ~= "2H" then
         -- 1H weapons compare against MH
         for _, drop in ipairs(all1H) do
             ProcessWeaponDrop(drop,
@@ -279,7 +274,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
     end
 
     -- Use only the winning loadout's gain for scoring to avoid inflating numbers
-    if weaponMode == "2H" then
+    if ns.weaponMode == "2H" then
         scoringGain = gain2H
     else
         scoringGain = gain1H
@@ -291,7 +286,6 @@ end
 --[[
     CalculateDungeonScore(dungeonDrops, playerGear)
     Returns:
-        score          - combined weighted score (0-100, higher = better)
         upgradeCount   - number of slots with at least one usable upgrade
         totalIlvlGain  - sum of max ilvl gains across upgrade slots
         upgradeDetails - list of { slot, label, itemName, currentIlvl, dropIlvl, gain, stats, fromClient }
@@ -321,7 +315,6 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
 
     local upgradeCount   = 0
     local totalIlvlGain  = 0
-    local totalStatScore = 0
     local upgradeDetails = {}
     local statUpgradeCount = 0
     local statOnlyUpgrades = {}
@@ -352,13 +345,13 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
             local current = playerGear[gearKey]
             --print("Gear score: " .. playerGear[gearKey].secondaryStatScore)
             table.insert(currentPieces, {
-                key   = gearKey,
-                ilvl  = current and current.ilvl or 0,
-                label = current and current.label or gearKey,
-                secondaryStatScore = current.secondaryStatScore,
-                stats = current.stats,
-                track = (current and not current.isCrafted) and current.track or nil,
-                isCrafted = current and current.isCrafted or false
+                key                = gearKey,
+                ilvl               = current and current.ilvl or 0,
+                label              = current and current.label or gearKey,
+                secondaryStatScore = current and current.secondaryStatScore or 0,
+                stats              = current and current.stats or nil,
+                track              = (current and not current.isCrafted) and current.track or nil,
+                isCrafted          = current and current.isCrafted or false,
             })
         end
         table.sort(currentPieces, function(a, b) return a.ilvl < b.ilvl end)
@@ -374,7 +367,6 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                     local gain = drop.ilvl - current.ilvl
                     if gain >= MIN_UPGRADE_DELTA then
                         totalIlvlGain  = totalIlvlGain + gain
-                        totalStatScore = totalStatScore + CachedStatScore(drop)
                         usedDrops[dropIdx] = true
                     end
                     break
@@ -480,29 +472,14 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
             trackUpgradeCount = trackUpgradeCount + 1
         end
 
-        local statScore = StatScore({ itemLink = wu.itemLink }, weights)
-
-        totalStatScore = totalStatScore + statScore
-
         table.insert(upgradeDetails, wu)
     end
     totalIlvlGain = totalIlvlGain + weaponScoringGain  -- but only score the best loadout
 
-    -- Normalize
-    local maxSlots    = 15
-    local maxGain     = 300
-    local normCount   = math.min(upgradeCount / maxSlots, 1.0)
-    local normGain    = math.min(totalIlvlGain / maxGain, 1.0)
-    local normStats   = upgradeCount > 0 and (totalStatScore / upgradeCount) or 0
-
-    local score = (normCount * WEIGHT_UPGRADE_COUNT
-                 + normGain  * WEIGHT_ILVL_GAIN
-                 + normStats * WEIGHT_STATS) * 100
-
     -- Sort upgrades: biggest ilvl gain first
     table.sort(upgradeDetails, function(a, b) return a.gain > b.gain end)
 
-    return score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, statUpgradeCount, statOnlyUpgrades, trackUpgradeCount
+    return upgradeCount, totalIlvlGain, upgradeDetails, statUpgradeCount, statOnlyUpgrades, trackUpgradeCount
 end
 
 --[[
@@ -579,38 +556,29 @@ function DungeonAdvisorCalc:RankDungeons()
         end
         --print(string.format("[DungeonAdvisor] %s: found %d drops for %s", selectedDiff, #drops, dungeonEntry.name or "unknown"))
         if #drops > 0 then
-            local score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, statUpgradeCount, statOnlyUpgrades, trackUpgradeCount = self:CalculateDungeonScore(drops, playerGear)
-            -- Each component normalized to 0-1 range
-            local ilvlDensity  = totalIlvlGain / #drops * W_ILVL_DENSITY
-            local upgradeRate  = upgradeCount / #drops * W_UPGRADE_RATE                    -- fraction of drops that are ilvl upgrades
-            local statQuality  = statUpgradeCount / #drops * W_STAT_QUALITY -- fraction of drops that are stat upgrades
-            local trackQuality  = trackUpgradeCount / #drops * W_TRACK -- fraction of drops that are stat upgrades
-            
-            local efficiency = ilvlDensity + upgradeRate + statQuality + trackQuality
+            local upgradeCount, totalIlvlGain, upgradeDetails, statUpgradeCount, statOnlyUpgrades, trackUpgradeCount = self:CalculateDungeonScore(drops, playerGear)
+            local ilvlDensity  = totalIlvlGain / #drops * ns.W_ILVL_DENSITY
+            local upgradeRate  = upgradeCount / #drops * ns.W_UPGRADE_RATE
+            local statQuality  = statUpgradeCount / #drops * ns.W_STAT_QUALITY
+            local trackQuality = trackUpgradeCount / #drops * ns.W_TRACK
+            local efficiency   = ilvlDensity + upgradeRate + statQuality + trackQuality
 
             table.insert(results, {
-                name           = dungeonEntry.name,
-                score          = score,
-                upgradeCount   = upgradeCount,
-                totalIlvlGain  = totalIlvlGain,
-                efficiency     = efficiency,
-                dropCount      = #drops,
-                upgradeDetails = upgradeDetails,
+                name             = dungeonEntry.name,
+                upgradeCount     = upgradeCount,
+                totalIlvlGain    = totalIlvlGain,
+                efficiency       = efficiency,
+                dropCount        = #drops,
+                upgradeDetails   = upgradeDetails,
                 statUpgradeCount = statUpgradeCount,
-                statOnlyUpgrades  = statOnlyUpgrades,
+                statOnlyUpgrades = statOnlyUpgrades,
                 trackUpgradeCount = trackUpgradeCount,
             })
         end
     end
 
     table.sort(results, function(a, b)
-        if a.efficiency and b.efficiency then
-            if a.efficiency ~= b.efficiency then
-                return a.efficiency > b.efficiency
-            end
-        end
-        -- Fallback to score if efficiency is equal or missing
-        return (a.score or 0) > (b.score or 0)
+        return (a.efficiency or 0) > (b.efficiency or 0)
     end)
     return results
 end
@@ -637,8 +605,6 @@ function DungeonAdvisorCalc:GetSlotFromEquipLoc(equipLoc)
         ["INVTYPE_WEAPONOFFHAND"] = "OFFHAND",
         ["INVTYPE_SHIELD"] = "OFFHAND",
         ["INVTYPE_HOLDABLE"] = "OFFHAND",
-        ["INVTYPE_RANGED"] = "RANGED",
-        ["INVTYPE_RANGEDRIGHT"] = "RANGED",
     }
     return equipLocToSlot[equipLoc]
 end

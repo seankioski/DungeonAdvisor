@@ -19,10 +19,10 @@ DungeonAdvisor.version = "1.0.7"
 DungeonAdvisorLootDB = {} -- Global loot database (populated at PLAYER_LOGIN)
 
 -- Tuneable weights
-W_ILVL_DENSITY  = 0.40  -- how much raw ilvl gain per drop matters
-W_UPGRADE_RATE  = 4  -- how often you actually get an upgrade
-W_STAT_QUALITY  = 4  -- how often the upgrade also has good stats
-W_TRACK  = 7  -- how often the upgrade also has good stats
+ns.W_ILVL_DENSITY  = 0.40  -- how much raw ilvl gain per drop matters
+ns.W_UPGRADE_RATE  = 4     -- how often you actually get an upgrade
+ns.W_STAT_QUALITY  = 4     -- how often the upgrade also has good stats
+ns.W_TRACK         = 7     -- how often the upgrade is a track upgrade
 
 -- Slot IDs we care about (WoW inventory slot numbers)
 DungeonAdvisor.SLOTS = {
@@ -40,7 +40,6 @@ DungeonAdvisor.SLOTS = {
     TRINKET   = { id = 13, label = "Trinket 1" }, -- we'll also check slot 14
     MAINHAND  = { id = 16, label = "Main Hand" },
     OFFHAND   = { id = 17, label = "Off Hand" },
-    RANGED    = { id = 18, label = "Ranged" },
 }
 
 -- Extra ring/trinket slots
@@ -123,15 +122,15 @@ function ns:SetStatWeight(stat, value)
 end
 
 -- Returns a table of { slotName -> currentIlvl } for the player
-playerUsing2H = false
-weaponMode = ""
+ns.playerUsing2H = false
+ns.weaponMode = ""
 
 local function BuildGearEntry(itemLink, label, weights)
-    local _, _, _, ilvl = GetItemInfo(itemLink)
+    local itemName, _, _, ilvl = GetItemInfo(itemLink)
     local stats = ns.GetItemStatsCompat(itemLink)
     return {
         ilvl               = ilvl or 0,
-        name               = GetItemInfo(itemLink) or "Unknown",
+        name               = itemName or "Unknown",
         label              = label,
         secondaryStatScore = ns:SecondaryStatScore(stats, weights),
         stats              = stats,
@@ -153,7 +152,7 @@ function DungeonAdvisor:GetEquippedGear()
         if itemLink then
             gear[key] = BuildGearEntry(itemLink, slotInfo.label, weights)
 
-            if slotName == "MAINHAND" and weaponMode == "" then
+            if slotName == "MAINHAND" and ns.weaponMode == "" then
                 local _, _, _, _, _, itemType, itemSubType = GetItemInfo(itemLink)
                 if itemType == "Weapon" then
                     local is2H = itemSubType == "Two-Handed Swords"
@@ -164,8 +163,8 @@ function DungeonAdvisor:GetEquippedGear()
                              or  itemSubType == "Bows"
                              or  itemSubType == "Guns"
                              or  itemSubType == "Crossbows"
-                    playerUsing2H = is2H
-                    weaponMode    = is2H and "2H" or "1H"
+                    ns.playerUsing2H = is2H
+                    ns.weaponMode    = is2H and "2H" or "1H"
                 end
             end
         else

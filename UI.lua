@@ -25,19 +25,6 @@ local SLOT_SORT_ORDER = {
     ["Trinket"]   = 14,
 }
 
--- Color gradient: green (great) → yellow → orange → red (poor)
-local function ScoreColor(score)
-    if score >= 70 then
-        return 0.2, 1.0, 0.2        -- green
-    elseif score >= 45 then
-        return 1.0, 0.85, 0.0       -- gold
-    elseif score >= 20 then
-        return 1.0, 0.5, 0.0        -- orange
-    else
-        return 0.8, 0.2, 0.2        -- red
-    end
-end
-
 -- Helper to attach a tooltip to a FontString via an invisible frame
 local function AttachHeaderTooltip(fontString, parent, title, body)
     local tip = CreateFrame("Frame", nil, parent)
@@ -400,8 +387,6 @@ local function BuildDungeonRows(scrollChild, results)
 
     local y = headerY - 20
     for i, result in ipairs(results) do
-        local r, g, b = ScoreColor(result.score)
-        -- local stars    = ScoreStars(result.score)
         local upgradePct = result.dropCount > 0 
             and math.floor((result.upgradeCount / result.dropCount) * 100) 
             or 0
@@ -428,7 +413,7 @@ local function BuildDungeonRows(scrollChild, results)
 
         local bgTex = bg:CreateTexture(nil, "BACKGROUND")
         bgTex:SetAllPoints()
-        bgTex:SetColorTexture(r * 0.12, g * 0.12, b * 0.12, 0.5)
+        bgTex:SetColorTexture(0.1, 0.1, 0.1, 0.5)
 
         bg:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestLogTitleHighlight")
 
@@ -814,16 +799,16 @@ function DungeonAdvisorUI:Create()
 
     local radioGroup = {}
     local r1 = CreateRadioButton(configSidebar, "2H Only", radioGroup, function(val)
-        weaponMode = "2H"
+        ns.weaponMode = "2H"
         DungeonAdvisorUI:RefreshDungeonList()
     end)
     local r2 = CreateRadioButton(configSidebar, "All", radioGroup, function(val)
-        weaponMode = "1H"
+        ns.weaponMode = "1H"
         DungeonAdvisorUI:RefreshDungeonList()
     end)
     r1:SetPoint("TOPLEFT", 0, -370)
     r2:SetPoint("TOPRIGHT", -20, -370)
-    if playerUsing2H then
+    if ns.playerUsing2H then
         r1:SetChecked(true)
     else
         r2:SetChecked(true)

@@ -467,11 +467,8 @@ local function ScanLootForEncounter(instanceID, encounterID, difficultyID, class
             itemLink = info.link,
             track    = track,
         })
-
-        
         index = index + 1
     end
-    
 
     --print(string.format("|cff00ccffDA DEBUG:|r encounter=%d diff=%d items=%d", encounterID, difficultyID, #items))
     return items
