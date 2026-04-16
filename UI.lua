@@ -8,7 +8,6 @@ local FRAME_WIDTH  = 1390
 local FRAME_HEIGHT = 460
 local ROW_HEIGHT   = 26
 local DETAIL_WIDTH = 350
-local DETAIL_COLOR = { r = 0.8, g = 0.8, b = 0.8 }
 local SLOT_SORT_ORDER = {
     ["Main Hand"] = 1,
     ["Off Hand"]  = 2,
@@ -62,58 +61,7 @@ local function CreateDivider(parent, yOffset)
     return line
 end
 
-local function StatMatchColor(stats, weights)
-    if not stats or not weights then return 1, 1, 1 end
-
-    -- normalize weights to proportions
-    local totalWeight = 0
-    for _, w in pairs(weights) do totalWeight = totalWeight + w end
-    if totalWeight == 0 then return 1, 1, 1 end
-
-    local weightProp = {}
-    for key, w in pairs(weights) do
-        weightProp[key] = w / totalWeight
-    end
-
-    -- normalize item stats to proportions
-    local totalStats = 0
-    for shortKey, _ in pairs(weights) do
-        local wowKey = DungeonAdvisorCalc.STAT_KEY_MAP[shortKey]
-        if wowKey then totalStats = totalStats + (stats[wowKey] or 0) end
-    end
-
-    if totalStats == 0 then return 0.6, 0.6, 0.6 end  -- no secondary stats, gray
-
-    local statProp = {}
-    for shortKey, _ in pairs(weights) do
-        local wowKey = DungeonAdvisorCalc.STAT_KEY_MAP[shortKey]
-        statProp[shortKey] = wowKey and ((stats[wowKey] or 0) / totalStats) or 0
-    end
-
-    -- similarity: 1 - average absolute difference between proportions
-    -- perfect match = 1.0, complete mismatch = 0.0
-    local totalDiff = 0
-    for key, _ in pairs(weights) do
-        totalDiff = totalDiff + math.abs((statProp[key] or 0) - (weightProp[key] or 0))
-    end
-    -- totalDiff ranges 0-2 (sum of absolute differences of proportions)
-    local similarity = 1 - (totalDiff / 2)
-
-    -- map similarity to green→yellow→red
-    if similarity >= 0.5 then
-        -- green to yellow: similarity 1.0=green, 0.5=yellow
-        local t = (similarity - 0.5) / 0.5
-        return 1 - t, 1, 0  -- r goes 1→0, g stays 1
-    else
-        -- yellow to red: similarity 0.5=yellow, 0.0=red
-        local t = similarity / 0.5
-        return 1, t, 0  -- r stays 1, g goes 1→0
-    end
-end
-
 -- Build the detail panel shown below the dungeon list
-local detailRows = {}
-local detailHeader
 local dungeonRows = {}
 local pinnedResult = nil   -- set when a dungeon is clicked, cleared on second click
 local detailPanel          -- the frame itself
@@ -196,7 +144,7 @@ local function CreateIgnoreTierInputs(parent)
 
     local slots = {
         { key = "HEAD",        label = "Head" },
-        { key = "SHOULDER",       label = "Shioulder" },
+        { key = "SHOULDER",       label = "Shoulder" },
         { key = "CHEST",     label = "Chest" },
         { key = "HANDS", label = "Hands" },
         { key = "LEGS", label = "Legs" },
@@ -212,7 +160,7 @@ local function CreateIgnoreTierInputs(parent)
         label:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, rowY)
         label:SetText(stat.label)
 
-        local checkbox = CreateFrame("CheckButton", "MyAddonCheckbox", parent, "UICheckButtonTemplate")
+        local checkbox = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
         checkbox:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, rowY + 10)
         checkbox:SetChecked(DungeonAdvisorCharDB.ignoreTiers and DungeonAdvisorCharDB.ignoreTiers[stat.key])
 
@@ -241,34 +189,6 @@ local function AddLine(text, r, g, b, indent, fontSize)
     fs:SetText(text)
     fs:Show()
     table.insert(detailContent, fs)
-end
-
-local function AddItemLinkLine(itemLink, itemName, indent)
-    local font = "GameFontHighlightSmall"
-    local fs = detailScrollChild:CreateFontString(nil, "OVERLAY", font)
-    local yOffset = -(#detailContent * 16 + 8)
-    fs:SetPoint("TOPLEFT", detailScrollChild, "TOPLEFT", indent or 8, yOffset)
-    fs:SetWidth(DETAIL_WIDTH - (indent or 8) - 8)
-    fs:SetJustifyH("LEFT")
-    fs:SetText(itemLink or itemName)
-    fs:Show()
-    table.insert(detailContent, fs)
-
-    -- invisible button over the font string for tooltip interaction
-    local btn = CreateFrame("Button", nil, detailScrollChild)
-    btn:SetPoint("TOPLEFT", fs, "TOPLEFT")
-    btn:SetPoint("BOTTOMRIGHT", fs, "BOTTOMRIGHT")
-    btn:SetScript("OnEnter", function(self)
-        if itemLink then
-            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            GameTooltip:SetHyperlink(itemLink)
-            GameTooltip:Show()
-        end
-    end)
-    btn:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-    table.insert(detailContent, btn)
 end
 
 local function RenderDetailPanel(result)
@@ -409,8 +329,6 @@ function DungeonAdvisorUI:RebuildScrollChild()
         if r then r:Hide() end
     end
 
-    detailRows = {}
-    detailHeader = nil
     dungeonRows = {}
     pinnedResult = nil
     RenderDetailPanel(nil)
@@ -423,7 +341,6 @@ local function BuildDungeonRows(scrollChild, results)
         if r.bg then r.bg:Hide() end
         if r.label then r.label:Hide() end
         if r.stars then r.stars:Hide() end
-        if r.info then r.info:Hide() end
     end
     pinnedResult = nil
     RenderDetailPanel(nil)
@@ -678,7 +595,7 @@ local function BuildDungeonRows(scrollChild, results)
             end
         end)
 
-        table.insert(dungeonRows, { bg = bg, label = label, info = info, pinHighlight = pinHighlight })
+        table.insert(dungeonRows, { bg = bg, label = label, pinHighlight = pinHighlight })
 
 
         y = y - (ROW_HEIGHT + 6)
@@ -917,8 +834,8 @@ function DungeonAdvisorUI:Create()
     difficultySidebar = CreateFrame("Frame", nil, f)
     difficultySidebar:SetSize(130, FRAME_HEIGHT - 60)  -- Width for buttons, height to fit
     difficultySidebar:SetPoint("TOPLEFT", f, "TOPLEFT", 140, -30)
-    -- Optional: Add a subtle background to the configSidebar
-    local difficultySidebarBg = configSidebar:CreateTexture(nil, "BACKGROUND")
+    -- Optional: Add a subtle background to the difficultySidebar
+    local difficultySidebarBg = difficultySidebar:CreateTexture(nil, "BACKGROUND")
     difficultySidebarBg:SetAllPoints()
     difficultySidebarBg:SetColorTexture(0.1, 0.1, 0.1, 0.3)  -- Dark background for separation
 
@@ -1019,9 +936,6 @@ function DungeonAdvisorUI:Refresh()
     DungeonAdvisor:InitializeLootDB()
     DungeonAdvisorUI:RefreshDungeonList()
     -- Clear detail panel
-    for _, r in ipairs(detailRows) do r:Hide() end
-    detailRows = {}
-    if detailHeader then detailHeader:Hide() end
 end
 
 function DungeonAdvisorUI:Toggle()

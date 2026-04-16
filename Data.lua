@@ -80,13 +80,6 @@ local function EJ_GetLootInfoByIndexCompat(index)
     return nil
 end
 
-ns.DIFF_COLORS = {
-    GREEN  = { r = 0.12, g = 0.75, b = 0.12 },
-    BLUE   = { r = 0.00, g = 0.44, b = 0.87 },
-    PURPLE = { r = 0.64, g = 0.21, b = 0.93 },
-    ORANGE = { r = 1.00, g = 0.50, b = 0.00 },
-}
-
 function ns:GetDifficultyByID(dungeonDiff)
     for _, diff in ipairs(ns.DIFFICULTIES.DUNGEON) do
         if diff.id == dungeonDiff then return diff end
@@ -97,66 +90,28 @@ ns.DIFFICULTIES = {
     DUNGEON = {
         { id = 1,  name = "N",  fullName = "Normal",  color = "GREEN"  },
         { id = 2,  name = "H",  fullName = "Heroic",  color = "BLUE",
-          lootIlvl = 230, vaultIlvl = 243, lootColor = "GREEN", vaultColor = "BLUE",
-          lootTrack = "Adventurer 4/6", vaultTrack = "Veteran 4/6" },
+          lootTrack = "ADVENTURER" },
         { id = 23, name = "M",  fullName = "Mythic",  color = "PURPLE",
-          lootIlvl = 246, vaultIlvl = 256, lootColor = "BLUE",  vaultColor = "BLUE",
-          lootTrack = "Champion 1/6", vaultTrack = "Champion 4/6" },
+          lootTrack = "VETERAN" },
         -- M+ virtual columns: same items as Mythic but ilvl scales with key level.
         -- Only showing breakpoints where loot ilvl actually changes.
         { id = "M+2",  name = "M2",  fullName = "Mythic+ 2-3",   color = "PURPLE", mythicPlus = true,
-          lootIlvl = 250, vaultIlvl = 259, lootColor = "BLUE",   vaultColor = "PURPLE",
-          lootTrack = "Champion 2/6", vaultTrack = "Hero 1/6",
-          lootBonusID = "CHAMPION_2", vaultBonusID = "HERO_1" },
+          lootTrack = "CHAMPION", lootBonusID = "CHAMPION_2" },
         { id = "M+4",  name = "M4",  fullName = "Mythic+ 4",     color = "PURPLE", mythicPlus = true,
-          lootIlvl = 253, vaultIlvl = 263, lootColor = "BLUE",   vaultColor = "PURPLE",
-          lootTrack = "Champion 3/6", vaultTrack = "Hero 2/6",
-          lootBonusID = "CHAMPION_3", vaultBonusID = "HERO_2" },
+          lootTrack = "CHAMPION", lootBonusID = "CHAMPION_3" },
         { id = "M+5",  name = "M5",  fullName = "Mythic+ 5",     color = "PURPLE", mythicPlus = true,
-          lootIlvl = 256, vaultIlvl = 263, lootColor = "BLUE",   vaultColor = "PURPLE",
-          lootTrack = "Champion 4/6", vaultTrack = "Hero 2/6",
-          lootBonusID = "CHAMPION_4", vaultBonusID = "HERO_2" },
+          lootTrack = "CHAMPION", lootBonusID = "CHAMPION_4" },
         { id = "M+6",  name = "M6",  fullName = "Mythic+ 6-7",   color = "PURPLE", mythicPlus = true,
-          lootIlvl = 259, vaultIlvl = 266, lootColor = "PURPLE", vaultColor = "PURPLE",
-          lootTrack = "Hero 1/6", vaultTrack = "Hero 3/6",
-          lootBonusID = "HERO_1", vaultBonusID = "HERO_3" },
+          lootTrack = "HERO", lootBonusID = "HERO_1" },
         { id = "M+8",  name = "M8",  fullName = "Mythic+ 8-9",   color = "PURPLE", mythicPlus = true,
-          lootIlvl = 263, vaultIlvl = 269, lootColor = "PURPLE", vaultColor = "PURPLE",
-          lootTrack = "Hero 2/6", vaultTrack = "Hero 4/6",
-          lootBonusID = "HERO_2", vaultBonusID = "HERO_4" },
+          lootTrack = "HERO", lootBonusID = "HERO_2" },
         { id = "M+10", name = "M10", fullName = "Mythic+ 10-12", color = "PURPLE", mythicPlus = true,
-          lootIlvl = 266, vaultIlvl = 272, lootColor = "PURPLE", vaultColor = "ORANGE",
-          lootTrack = "Hero 3/6", vaultTrack = "Myth 1/6",
-          lootBonusID = "HERO_3", vaultBonusID = "MYTH_1" },
+          lootTrack = "HERO", lootBonusID = "HERO_3" },
     },
 }
 
 -- strict enum typing required by WoW
 local EISFT = Enum.ItemSlotFilterType
-ns.SLOT_FILTERS = {
-    { name = "Head",      filter = EISFT.Head      },
-    { name = "Neck",      filter = EISFT.Neck      },
-    { name = "Shoulder",  filter = EISFT.Shoulder  },
-    { name = "Back",      filter = EISFT.Cloak     },
-    { name = "Chest",     filter = EISFT.Chest     },
-    { name = "Wrist",     filter = EISFT.Wrist     },
-    { name = "Hands",     filter = EISFT.Hand      },
-    { name = "Waist",     filter = EISFT.Waist     },
-    { name = "Legs",      filter = EISFT.Legs      },
-    { name = "Feet",      filter = EISFT.Feet      },
-    { name = "Finger",    filter = EISFT.Finger    },
-    { name = "Trinket",   filter = EISFT.Trinket   },
-    { name = "Main Hand", filter = EISFT.MainHand  },
-    { name = "Off Hand",  filter = EISFT.OffHand   },
-}
-
--- vers uses ITEM_MOD_VERSATILITY (no _SHORT suffix, blizz being blizz)
-ns.SECONDARY_STATS = {
-    { key = "ITEM_MOD_CRIT_RATING_SHORT",   short = "Crit",    name = "Critical Strike" },
-    { key = "ITEM_MOD_HASTE_RATING_SHORT",  short = "Haste",   name = "Haste" },
-    { key = "ITEM_MOD_MASTERY_RATING_SHORT", short = "Mastery", name = "Mastery" },
-    { key = "ITEM_MOD_VERSATILITY",          short = "Vers",    name = "Versatility" },
-}
 
 -- M+ bonus IDs for Midnight S1
 -- Maps upgrade track tier to the bonus ID that produces that ilvl + track display.
@@ -166,11 +121,11 @@ ns.SECONDARY_STATS = {
 local TRACK_BONUS_IDS = {
     -- Adventurer track: roughly 12771-12776
     ADVENTURER_1 = 12771,
-    ADVENTURER_1 = 12772,
-    ADVENTURER_1 = 12773,
-    ADVENTURER_1 = 12774,
-    ADVENTURER_1 = 12775,
-    ADVENTURER_1 = 12776,
+    ADVENTURER_2 = 12772,
+    ADVENTURER_3 = 12773,
+    ADVENTURER_4 = 12774,
+    ADVENTURER_5 = 12775,
+    ADVENTURER_6 = 12776,
     -- Veteran track: roughly 12778-12783
     VETERAN_1 = 12778,
     VETERAN_2 = 12779,
@@ -231,17 +186,17 @@ function ns:IsCraftedItem(itemLink)
     if not itemLink then return false end
     local CRAFTED_BONUS_IDS = { [523] = true, [8960] = true }
     local itemString = itemLink:match("|H(item:[^|]+)|h") or itemLink
-
     local parts = {}
     for p in (itemString..":"):gmatch("([^:]*):") do
         table.insert(parts, p)
     end
 
-    -- parts[1] = "item", parts[2] = itemID, so bonus count is at index 15
-    local numBonuses = tonumber(parts[15]) or 0
-    for i = 1, numBonuses do
-        local bonusID = tonumber(parts[15 + i])
-        if CRAFTED_BONUS_IDS[bonusID] then return true end
+    -- Be tolerant of different item string formats: scan all numeric parts
+    for _, part in ipairs(parts) do
+        local bonusID = tonumber(part)
+        if bonusID and CRAFTED_BONUS_IDS[bonusID] then
+            return true
+        end
     end
     return false
 end
@@ -260,10 +215,12 @@ function ns:GetTrackFromItemLink(itemLink)
     for part in (itemString .. ":"):gmatch("([^:]*):") do
         table.insert(parts, part)
     end
-    -- numBonuses is at position 14 (1-indexed), bonus IDs start at 15
-    local numBonuses = tonumber(parts[14]) or 0
-    for i = 1, numBonuses do
-        local bonusID = tonumber(parts[14 + i])
+
+    -- Scan all numeric parts for a known track bonus ID. This is robust
+    -- against different item string layouts where the bonus count index
+    -- may vary between clients/patches.
+    for _, part in ipairs(parts) do
+        local bonusID = tonumber(part)
         if bonusID and BONUS_ID_TO_TRACK[bonusID] then
             return BONUS_ID_TO_TRACK[bonusID]
         end
@@ -280,23 +237,22 @@ local function BuildItemLinkWithBonuses(itemID, trackBonusKey)
     local playerLevel = UnitLevel("player") or 80
     local itemString = "item:" .. itemID .. "::::::::" .. playerLevel .. "::::1:" .. bonusID
 
-    local itemName, _, itemQuality = GetItemInfo(itemID)
+    local itemName = GetItemInfo(itemID)
     if not itemName then
-        --print("|cff00ccffDA DEBUG:|r Registering pending itemID=" .. tostring(itemID))
         pendingItemIDs[itemID] = true
         return nil
     end
 
-    local colorHex = ITEM_QUALITY_COLORS[itemQuality] or ITEM_QUALITY_COLORS[4]
+    -- M+ bonus IDs always produce Epic quality regardless of the base item quality
+    local colorHex = ITEM_QUALITY_COLORS[4]
     return "|c" .. colorHex .. "|H" .. itemString .. "|h[" .. itemName .. "]|h|r"
 end
 
+local pendingItemIDs = {}       -- itemIDs we're waiting on from server cache
 local lootCache = {}
 local instanceCache = nil
 ns.isScanning = false
-local pendingItemIDs = {}       -- itemIDs we're waiting on from server cache
 local hasNormalPending = false  -- instanceCache has unresolved hasNormal checks
-local lastItemReceivedTime = 0
 local missedRefreshDuringScan = false
 
 ------------------------------------------------------------------------
@@ -386,13 +342,6 @@ local SEASONAL_DUNGEON_IDS = {
     [945]  = true,  -- Seat of the Triumvirate
     [476]  = true,  -- Skyreach
 }
-
-function ns:IsDataSettled()
-    local pending = next(pendingItemIDs)
-    local timeSince = GetTime() - lastItemReceivedTime
-    print(string.format("|cff00ccffDungeonAdvisor DEBUG:|r IsDataSettled - pendingItemIDs empty: %s, timeSince: %.2f", tostring(pending == nil), timeSince))
-    return pending == nil and timeSince > 0.5
-end
 
 -- runs once per session, caches dungeon/raid/boss structure
 function ns:BuildInstanceCache()
@@ -498,14 +447,31 @@ local function ScanLootForEncounter(instanceID, encounterID, difficultyID, class
     while true do
         local info = EJ_GetLootInfoByIndexCompat(index)
         if not info or not info.name then break end
+        local track = nil
+        if info.link then
+            track = ns:GetTrackFromItemLink(info.link)
+        end
+        -- fallback: if the link has no bonusIDs, derive track from the difficulty table
+        if not track then
+            local diff = ns:GetDifficultyByID(difficultyID)
+            if diff and diff.lootTrack then
+                local t = diff.lootTrack:match("^(%a+)")
+                if t then track = t:upper() end
+            end
+        end
+
         table.insert(items, {
             name     = info.name,
             icon     = info.icon,
             itemID   = info.itemID,
             itemLink = info.link,
+            track    = track,
         })
+
+        
         index = index + 1
     end
+    
 
     --print(string.format("|cff00ccffDA DEBUG:|r encounter=%d diff=%d items=%d", encounterID, difficultyID, #items))
     return items
@@ -554,17 +520,12 @@ local function ScanSourceType(results, instances, sourceType, difficulties, clas
                                 local built = BuildItemLinkWithBonuses(item.itemID, diff.lootBonusID)
                                 if built then lootLink = built end
                             end
-                            local vaultLink = nil
-                            if diff.vaultBonusID then
-                                vaultLink = BuildItemLinkWithBonuses(item.itemID, diff.vaultBonusID)
-                            end
-                            --print("  ", item.name, "->", lootLink, "and", vaultLink)
+                            --print("  ", item.name, "->", lootLink)
                             table.insert(mpItems, {
-                                name          = item.name,
-                                icon          = item.icon,
-                                itemID        = item.itemID,
-                                itemLink      = lootLink,
-                                vaultItemLink = vaultLink,
+                                name     = item.name,
+                                icon     = item.icon,
+                                itemID   = item.itemID,
+                                itemLink = lootLink,
                             })
                         end
                         entry.items[diff.id] = mpItems
@@ -646,59 +607,6 @@ function ns:ScanLoot(specIndex)
     return results
 end
 
--- filters scan results to items with ALL selected stats (1 = any combo, 2 = exact combo)
-function ns:FilterResultsByStats(results, statKeys)
-    if not statKeys or #statKeys == 0 then return results, 0 end
-
-    local preFilterCount = #results
-    local filtered = {}
-    for _, entry in ipairs(results) do
-        local newEntry = {
-            sourceName  = entry.sourceName,
-            sourceType  = entry.sourceType,
-            instanceID  = entry.instanceID,
-            bossName    = entry.bossName,
-            encounterID = entry.encounterID,
-            items       = {},
-        }
-
-        for diffID, items in pairs(entry.items) do
-            local kept = {}
-            for _, item in ipairs(items) do
-                if not item.itemLink then
-                    table.insert(kept, item)  -- no link = keep (uncached)
-                else
-                    local stats = GetItemStatsCompat(item.itemLink)
-                    if not stats then
-                        table.insert(kept, item)  -- stats not cached, keep to be safe
-                    else
-                        local hasAll = true
-                        for _, key in ipairs(statKeys) do
-                            if not stats[key] then
-                                hasAll = false
-                                break
-                            end
-                        end
-                        if hasAll then
-                            table.insert(kept, item)
-                        end
-                    end
-                end
-            end
-            if #kept > 0 then
-                newEntry.items[diffID] = kept
-            end
-        end
-
-        local hasItems = false
-        for _ in pairs(newEntry.items) do hasItems = true; break end
-        if hasItems then
-            table.insert(filtered, newEntry)
-        end
-    end
-    return filtered, preFilterCount
-end
-
 function ns:IsDataPending()
     local pendingCount = 0
     for id, _ in pairs(pendingItemIDs) do
@@ -713,16 +621,9 @@ function ns:ClearLootCache()
     DungeonAdvisorLootDB = {}  -- force InitializeLootDB to rescan
 end
 
-function ns:ClearAllCaches()
-    wipe(lootCache)
-    instanceCache = nil
-end
-
 -- debounced refresh when EJ data loads in (but not during our own scans)
 local ejFrame = CreateFrame("Frame")
 local refreshPending = false
-
-function ns:ResetRefreshPending() refreshPending = false end
 
 local settleTimer = nil
 
@@ -753,6 +654,10 @@ ejFrame:RegisterEvent("EJ_LOOT_DATA_RECIEVED")
 ejFrame:RegisterEvent("EJ_DIFFICULTY_UPDATE")
 ejFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 ejFrame:SetScript("OnEvent", function(self, event, ...)
+    if event == "GET_ITEM_INFO_RECEIVED" then
+        local itemID = ...
+        pendingItemIDs[itemID] = nil
+    end
     if ns.isScanning then
         if event == "EJ_LOOT_DATA_RECIEVED" then
             missedRefreshDuringScan = true  -- remember we got new data mid-scan

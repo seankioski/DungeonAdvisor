@@ -15,7 +15,7 @@ ns.state = {
 -- Initializes the addon and reads character gear via WoW API
 
 DungeonAdvisor = {}
-DungeonAdvisor.version = "1.0.6"
+DungeonAdvisor.version = "1.0.7"
 DungeonAdvisorLootDB = {} -- Global loot database (populated at PLAYER_LOGIN)
 
 -- Tuneable weights
@@ -56,9 +56,6 @@ end
 
 function ns:DetectLootSpec()
     local className, classFile, classID = UnitClass("player")
-    ns.playerClassID   = classID
-    ns.playerClassName = className
-    ns.playerClassFile = classFile
 
     ns.state.selectedClassID   = classID
     ns.state.selectedClassName = className

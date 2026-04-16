@@ -208,7 +208,7 @@ local function ScoreWeaponLoadout(drops, playerGear, weights)
         local stats = ns.GetItemStatsCompat(drop.itemLink)
         local dropRatio = ns:StatRatioScore(stats)
         local currentRatio = ns:StatRatioScore(compareStats)
-        local dropTrack = ns:GetTrackFromItemLink(drop.itemLink)
+        local dropTrack = ns:GetTrackFromItemLink(drop.itemLink) or drop.track
         local dropTrackOrder = dropTrack and ns.TRACK_ORDER[dropTrack] or 0
         local compareTrackOrder = (not compareIsCrafted and compareTrack) and ns.TRACK_ORDER[compareTrack] or 0
 
@@ -322,7 +322,6 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     local upgradeCount   = 0
     local totalIlvlGain  = 0
     local totalStatScore = 0
-    local totalSecondaryStatScore = 0
     local upgradeDetails = {}
     local statUpgradeCount = 0
     local statOnlyUpgrades = {}
@@ -367,7 +366,6 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
         -- SCORING: count every drop that upgrades any equipped piece,
         -- but only sum ilvl gain for the best maxCount assignments to avoid inflation
         local usedDrops = {}
-        local usedSlots = {}
 
         -- First pass: greedy assignment for ilvl gain scoring (capped at maxCount)
         for _, current in ipairs(currentPieces) do
@@ -375,15 +373,9 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                 if not usedDrops[dropIdx] then
                     local gain = drop.ilvl - current.ilvl
                     if gain >= MIN_UPGRADE_DELTA then
-                        local stats = ns.GetItemStatsCompat(drop.itemLink)
-                        local statScore = CachedStatScore(drop)
-                        local secondaryScore = ns:SecondaryStatScore(stats, weights)
-
                         totalIlvlGain  = totalIlvlGain + gain
-                        totalStatScore = totalStatScore + statScore
-                        totalSecondaryStatScore = totalSecondaryStatScore + secondaryScore
+                        totalStatScore = totalStatScore + CachedStatScore(drop)
                         usedDrops[dropIdx] = true
-                        usedSlots[current.key] = true
                     end
                     break
                 end
@@ -394,7 +386,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
         -- Track how many of each upgrade happens here
         for _, drop in ipairs(drops) do
             local dropStats = ns.GetItemStatsCompat(drop.itemLink)
-            local dropTrack = ns:GetTrackFromItemLink(drop.itemLink)
+            local dropTrack = ns:GetTrackFromItemLink(drop.itemLink) or drop.track
             local dropTrackOrder = dropTrack and ns.TRACK_ORDER[dropTrack] or 0
             local dropRatio = ns:StatRatioScore(dropStats)
 
@@ -489,10 +481,8 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
         end
 
         local statScore = StatScore({ itemLink = wu.itemLink }, weights)
-        local secondaryScore = ns:SecondaryStatScore(ns.GetItemStatsCompat(wu.itemLink), weights)
 
         totalStatScore = totalStatScore + statScore
-        totalSecondaryStatScore = totalSecondaryStatScore + wu.secondaryStatScore
 
         table.insert(upgradeDetails, wu)
     end
@@ -512,7 +502,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
     -- Sort upgrades: biggest ilvl gain first
     table.sort(upgradeDetails, function(a, b) return a.gain > b.gain end)
 
-    return score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, totalSecondaryStatScore, statUpgradeCount, statOnlyUpgrades, trackUpgradeCount
+    return score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, statUpgradeCount, statOnlyUpgrades, trackUpgradeCount
 end
 
 --[[
@@ -579,6 +569,7 @@ function DungeonAdvisorCalc:RankDungeons()
                             ilvl       = itemLevel,
                             itemID     = item.itemID,
                             itemLink   = item.itemLink,
+                            track      = item.track,
                             itemType  = itemType,
                             itemSubType = itemSubType,
                         })
@@ -588,10 +579,7 @@ function DungeonAdvisorCalc:RankDungeons()
         end
         --print(string.format("[DungeonAdvisor] %s: found %d drops for %s", selectedDiff, #drops, dungeonEntry.name or "unknown"))
         if #drops > 0 then
-            local score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, totalSecondaryStatScore, statUpgradeCount, statOnlyUpgrades, trackUpgradeCount  = self:CalculateDungeonScore(drops, playerGear)
-            local avgStatScore = upgradeCount > 0 and (totalStatScore / upgradeCount) or 0
-            local baseValue = (#drops > 0) and (totalIlvlGain / #drops) or 0
-            
+            local score, upgradeCount, totalIlvlGain, upgradeDetails, totalStatScore, statUpgradeCount, statOnlyUpgrades, trackUpgradeCount = self:CalculateDungeonScore(drops, playerGear)
             -- Each component normalized to 0-1 range
             local ilvlDensity  = totalIlvlGain / #drops * W_ILVL_DENSITY
             local upgradeRate  = upgradeCount / #drops * W_UPGRADE_RATE                    -- fraction of drops that are ilvl upgrades
@@ -607,8 +595,6 @@ function DungeonAdvisorCalc:RankDungeons()
                 totalIlvlGain  = totalIlvlGain,
                 efficiency     = efficiency,
                 dropCount      = #drops,
-                avgStatScore   = avgStatScore,
-                baseValue      = baseValue,
                 upgradeDetails = upgradeDetails,
                 statUpgradeCount = statUpgradeCount,
                 statOnlyUpgrades  = statOnlyUpgrades,
