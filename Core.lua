@@ -11,6 +11,17 @@ ns.state = {
     selectedDifficulty = "M+10",  -- Default difficulty
 }
 
+ns.inspectedPlayerName = nil  -- non-nil while viewing another player's data
+ns.effectiveIgnoreTiers = nil  -- non-nil while inspecting; overrides saved prefs
+
+-- Slot IDs for the 5 tier-eligible slots
+local TIER_SLOT_IDS = { HEAD=1, SHOULDER=3, CHEST=5, HANDS=10, LEGS=7 }
+
+-- Returns the active ignore-tier table: auto-detected when inspecting, saved prefs for self
+function ns:GetEffectiveIgnoreTiers()
+    return ns.effectiveIgnoreTiers or (DungeonAdvisorCharDB and DungeonAdvisorCharDB.ignoreTiers) or {}
+end
+
 -- DungeonAdvisor: Core
 -- Initializes the addon and reads character gear via WoW API
 
@@ -126,10 +137,15 @@ ns.playerUsing2H = false
 ns.weaponMode = ""
 
 local function BuildGearEntry(itemLink, label, weights)
-    local itemName, _, _, ilvl = GetItemInfo(itemLink)
+    local itemName = GetItemInfo(itemLink)
+    -- GetDetailedItemLevelInfo computes the effective ilvl from the bonus IDs
+    -- in the link itself — no cache required, always returns the upgraded value.
+    -- GetItemInfo ilvl is wrong on first load: returns base ilvl (e.g. 580)
+    -- rather than the track-upgraded ilvl (e.g. 636).
+    local ilvl = GetDetailedItemLevelInfo(itemLink) or 0
     local stats = ns.GetItemStatsCompat(itemLink)
     return {
-        ilvl               = ilvl or 0,
+        ilvl               = ilvl,
         name               = itemName or "Unknown",
         label              = label,
         secondaryStatScore = ns:SecondaryStatScore(stats, weights),
@@ -139,20 +155,27 @@ local function BuildGearEntry(itemLink, label, weights)
     }
 end
 
-function DungeonAdvisor:GetEquippedGear()
+function DungeonAdvisor:GetEquippedGear(unit, linksBySlotID)
+    unit = unit or "player"
     local weights = ns:GetSpecWeights()
     local gear    = {}
+
+    local function getLink(slotID)
+        if linksBySlotID then return linksBySlotID[slotID] end
+        return GetInventoryItemLink(unit, slotID)
+    end
 
     for slotName, slotInfo in pairs(self.SLOTS) do
         local key      = (slotName == "FINGER") and "FINGER1"
                       or (slotName == "TRINKET") and "TRINKET1"
                       or slotName
-        local itemLink = GetInventoryItemLink("player", slotInfo.id)
+        local itemLink = getLink(slotInfo.id)
 
         if itemLink then
             gear[key] = BuildGearEntry(itemLink, slotInfo.label, weights)
 
-            if slotName == "MAINHAND" and ns.weaponMode == "" then
+            -- Auto-detect weapon mode: always for inspected units, only on first load for self
+            if slotName == "MAINHAND" and (ns.weaponMode == "" or linksBySlotID) then
                 local _, _, _, _, _, itemType, itemSubType = GetItemInfo(itemLink)
                 if itemType == "Weapon" then
                     local is2H = itemSubType == "Two-Handed Swords"
@@ -165,6 +188,10 @@ function DungeonAdvisor:GetEquippedGear()
                              or  itemSubType == "Crossbows"
                     ns.playerUsing2H = is2H
                     ns.weaponMode    = is2H and "2H" or "1H"
+                elseif linksBySlotID then
+                    -- Inspecting and item data not cached yet; default to 1H
+                    ns.playerUsing2H = false
+                    ns.weaponMode    = "1H"
                 end
             end
         else
@@ -173,7 +200,7 @@ function DungeonAdvisor:GetEquippedGear()
     end
 
     for extraName, extraInfo in pairs(self.EXTRA_SLOTS) do
-        local itemLink = GetInventoryItemLink("player", extraInfo.id)
+        local itemLink = getLink(extraInfo.id)
         if itemLink then
             gear[extraName] = BuildGearEntry(itemLink, extraInfo.label, weights)
         else
@@ -182,6 +209,59 @@ function DungeonAdvisor:GetEquippedGear()
     end
 
     return gear
+end
+
+-- Populate ns.state from an inspected unit's class/spec
+function ns:DetectInspectedSpec(unit)
+    local className, classFile, classID = UnitClass(unit)
+    if not classID then return false end
+
+    local specID = GetInspectSpecialization(unit)
+    if not specID or specID == 0 then return false end
+
+    local numSpecs = GetNumSpecializationsForClassID(classID)
+    for i = 1, numSpecs do
+        local id, name = GetSpecializationInfoForClassID(classID, i)
+        if id == specID then
+            ns.state.selectedClassID        = classID
+            ns.state.selectedClassName      = className
+            ns.state.selectedClassFile      = classFile
+            ns.state.selectedSpecIndex      = i
+            ns.state.selectedSpecID         = specID
+            ns.state.selectedSpecName       = name
+            ns.state.isViewingOtherClass    = true
+            ns.inspectedPlayerName          = UnitName(unit)
+            return true
+        end
+    end
+    return false
+end
+
+-- Inspect the current target and load their gear/spec into the advisor
+function DungeonAdvisor:InspectTarget()
+    if not UnitExists("target") or not UnitIsPlayer("target") then
+        print("|cff00ccff[DungeonAdvisor]|r No player targeted.")
+        return
+    end
+    if not CanInspect("target") then
+        print("|cff00ccff[DungeonAdvisor]|r Cannot inspect that player (too far away or in combat?).")
+        return
+    end
+    ns.pendingInspectUnit = "target"
+    NotifyInspect("target")
+end
+
+-- Reset to the local player's own gear and spec
+function DungeonAdvisor:ReturnToSelf()
+    ns.inspectedPlayerName  = nil
+    ns.pendingInspectUnit   = nil
+    ns.effectiveIgnoreTiers = nil
+    ns.weaponMode           = ""  -- allow auto-detect to re-run
+    ns:DetectLootSpec()
+    DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear("player")
+    DungeonAdvisorUI:UpdateSpecInfo()
+    DungeonAdvisor:InitializeLootDB()
+    DungeonAdvisorUI:RefreshDungeonList()
 end
 
 function DungeonAdvisor:InitializeLootDB()
@@ -202,6 +282,59 @@ end
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+eventFrame:RegisterEvent("INSPECT_READY")
+eventFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+
+ns.pendingInspectUnit = nil  -- set while waiting for INSPECT_READY
+
+-- State for deferred inspect gear load (waiting for item cache)
+local inspectStoredLinks  = {}   -- slotID -> itemLink, populated as item data arrives
+local inspectTierLinks    = {}   -- slotKey -> itemLink, for tier detection
+local inspectPendingItems = {}   -- itemID -> slotID: occupied slots whose data isn't cached yet
+local inspectActiveUnit   = nil  -- kept for retrying GetInventoryItemLink after cache load
+
+local function FinishInspect()
+    ns.weaponMode = ""  -- reset so auto-detect runs fresh for the inspected unit
+    DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear(nil, inspectStoredLinks)
+
+    -- Auto-detect which tier slots the inspected player is wearing tier in
+    ns.effectiveIgnoreTiers = {}
+    for slotKey, link in pairs(inspectTierLinks) do
+        if link then
+            local setID = select(16, GetItemInfo(link))
+            ns.effectiveIgnoreTiers[slotKey] = setID ~= nil and setID > 0
+        else
+            ns.effectiveIgnoreTiers[slotKey] = false
+        end
+    end
+
+    DungeonAdvisorUI:UpdateSpecInfo()
+    DungeonAdvisor:InitializeLootDB()
+    DungeonAdvisorUI:RefreshDungeonList()
+end
+
+-- Once all pending item IDs have loaded, retry GetInventoryItemLink (which
+-- requires items to be in the local cache) then build gear and refresh the UI.
+local function FinalizeInspect()
+    if inspectActiveUnit then
+        local unit = inspectActiveUnit
+        for _, slotInfo in pairs(DungeonAdvisor.SLOTS) do
+            if not inspectStoredLinks[slotInfo.id] then
+                inspectStoredLinks[slotInfo.id] = GetInventoryItemLink(unit, slotInfo.id)
+            end
+        end
+        for _, extraInfo in pairs(DungeonAdvisor.EXTRA_SLOTS) do
+            if not inspectStoredLinks[extraInfo.id] then
+                inspectStoredLinks[extraInfo.id] = GetInventoryItemLink(unit, extraInfo.id)
+            end
+        end
+    end
+    for slotKey, slotID in pairs(TIER_SLOT_IDS) do
+        inspectTierLinks[slotKey] = inspectStoredLinks[slotID]
+    end
+    inspectActiveUnit = nil
+    FinishInspect()
+end
 
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
@@ -210,7 +343,59 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         print("|cff00ccff[DungeonAdvisor]|r Loaded! Type |cffFFD700/da|r to open.")
     elseif event == "PLAYER_ENTERING_WORLD" then
         ns:DetectLootSpec()
-        DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear()
+        DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear("player")
+    elseif event == "INSPECT_READY" then
+        if not ns.pendingInspectUnit then return end
+        local unit = ns.pendingInspectUnit
+        ns.pendingInspectUnit = nil
+
+        if not ns:DetectInspectedSpec(unit) then
+            print("|cff00ccff[DungeonAdvisor]|r Could not read target spec (no specialization set?).")
+            return
+        end
+
+        -- Capture ALL item links NOW while the inspect window is open.
+        -- GetInventoryItemLink(unit) only works during the active inspect session;
+        -- by the time GET_ITEM_INFO_RECEIVED fires the window may have closed.
+        inspectActiveUnit  = unit
+        inspectStoredLinks  = {}
+        inspectTierLinks    = {}
+        inspectPendingItems = {}
+
+        -- GetInventoryItemLink(unit) returns nil for items not yet in the local
+        -- client cache. GetInventoryItemID works regardless of cache state.
+        -- Strategy: for each slot, try GetInventoryItemLink first (fast path).
+        -- If it returns nil but GetInventoryItemID confirms a slot is occupied,
+        -- queue that item ID and wait for GET_ITEM_INFO_RECEIVED, then retry.
+        local function QueueSlot(slotID)
+            local link = GetInventoryItemLink(unit, slotID)
+            if link then
+                inspectStoredLinks[slotID] = link
+                return
+            end
+            local itemID = GetInventoryItemID(unit, slotID)
+            if itemID then
+                GetItemInfo(itemID)               -- queue server load
+                inspectPendingItems[itemID] = slotID
+            end
+        end
+
+        for _, slotInfo in pairs(DungeonAdvisor.SLOTS) do QueueSlot(slotInfo.id) end
+        for _, extraInfo in pairs(DungeonAdvisor.EXTRA_SLOTS) do QueueSlot(extraInfo.id) end
+
+        if not next(inspectPendingItems) then
+            FinalizeInspect()  -- all items already cached
+        end
+        -- Otherwise wait for GET_ITEM_INFO_RECEIVED to fire for each pending ID
+
+    elseif event == "GET_ITEM_INFO_RECEIVED" then
+        if not next(inspectPendingItems) then return end
+        local itemID = tonumber(arg1)
+        if not inspectPendingItems[itemID] then return end
+        inspectPendingItems[itemID] = nil
+        if not next(inspectPendingItems) then
+            FinalizeInspect()
+        end
     end
 end)
 
@@ -230,7 +415,7 @@ end
 
 -- Debug helper
 function DungeonAdvisor:PrintGearDebug()
-    local gear = self:GetEquippedGear()
+    local gear = self:GetEquippedGear("player")
     print("|cff00ccff[DungeonAdvisor]|r Current gear:")
     for slot, info in pairs(gear) do
         print(string.format("  %s: %s (ilvl %d)", info.label, info.name, info.ilvl))

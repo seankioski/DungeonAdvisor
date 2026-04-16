@@ -429,7 +429,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
             if isIlvlUpgrade or isStatUpgrade or isTrackUpgrade then
                 -- use weakest ilvl piece as display reference, fall back to best track piece
                 local displayCurrent = bestIlvlCurrent or worstTrackCurrent
-                local ignoredSlot = DungeonAdvisorCharDB.ignoreTiers[displayCurrent.key]
+                local ignoredSlot = ns:GetEffectiveIgnoreTiers()[displayCurrent.key]
                 local displayLabel = MULTI_SLOT_LABELS[slot] or displayCurrent.label
                 local gain = drop.ilvl - displayCurrent.ilvl
 
