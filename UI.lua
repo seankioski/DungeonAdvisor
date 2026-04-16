@@ -64,7 +64,7 @@ local function CreateStatInputs(parent)
         { key = "versatility", label = "Versatility" },
     }
 
-    local startY = -70  -- below spec text
+    local startY = -85  -- below spec text (shifted for inspect banner buffer)
 
     for i, stat in ipairs(stats) do
         local rowY = startY - (i - 1) * 26
@@ -124,6 +124,10 @@ local function CreateRadioButton(parent, label, group, onSelected)
     return btn
 end
 
+local tierCheckboxes = {}  -- keyed by slot key, populated by CreateIgnoreTierInputs
+local weaponRadio2H  -- "2H Only" radio button
+local weaponRadio1H  -- "All" radio button
+
 local function CreateIgnoreTierInputs(parent)
     if not DungeonAdvisorCharDB.ignoreTiers then
         DungeonAdvisorCharDB.ignoreTiers = {}
@@ -131,13 +135,13 @@ local function CreateIgnoreTierInputs(parent)
 
     local slots = {
         { key = "HEAD",        label = "Head" },
-        { key = "SHOULDER",       label = "Shoulder" },
-        { key = "CHEST",     label = "Chest" },
-        { key = "HANDS", label = "Hands" },
-        { key = "LEGS", label = "Legs" },
+        { key = "SHOULDER",    label = "Shoulder" },
+        { key = "CHEST",       label = "Chest" },
+        { key = "HANDS",       label = "Hands" },
+        { key = "LEGS",        label = "Legs" },
     }
 
-    local startY = -210
+    local startY = -225
 
     for i, stat in ipairs(slots) do
         local rowY = startY - (i - 1) * 26
@@ -157,6 +161,8 @@ local function CreateIgnoreTierInputs(parent)
             DungeonAdvisorCharDB.ignoreTiers[stat.key] = isChecked
             DungeonAdvisorUI:RefreshDungeonList()
         end)
+
+        tierCheckboxes[stat.key] = checkbox
     end
 end
 
@@ -761,7 +767,7 @@ function DungeonAdvisorUI:Create()
 
     -- configSidebar for difficulty buttons (separate vertical stack)
     configSidebar = CreateFrame("Frame", nil, f)
-    configSidebar:SetSize(130, FRAME_HEIGHT - 60)  -- Width for buttons, height to fit
+    configSidebar:SetSize(150, FRAME_HEIGHT - 60)  -- Width for buttons, height to fit
     configSidebar:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -30)
     -- Optional: Add a subtle background to the configSidebar
     local configSidebarBg = configSidebar:CreateTexture(nil, "BACKGROUND")
@@ -770,7 +776,7 @@ function DungeonAdvisorUI:Create()
 
     -- "Stat Weights" on configSidebar
     local statWeightText = configSidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    statWeightText:SetPoint("TOP", configSidebar, "TOP", 0, -50)
+    statWeightText:SetPoint("TOP", configSidebar, "TOP", 0, -65)
     statWeightText:SetText("Stat Weights")
     AttachHeaderTooltip(statWeightText, configSidebar,
         "Stat Weights",
@@ -781,7 +787,7 @@ function DungeonAdvisorUI:Create()
 
     -- "Ignore Tier Slots" on configSidebar
     local ignoreTierText = configSidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    ignoreTierText:SetPoint("TOP", configSidebar, "TOP", 0, -190)
+    ignoreTierText:SetPoint("TOP", configSidebar, "TOP", 0, -205)
     ignoreTierText:SetText("Ignore Tier Slots")
     AttachHeaderTooltip(ignoreTierText, configSidebar,
         "Ignore Tier Slots",
@@ -790,7 +796,7 @@ function DungeonAdvisorUI:Create()
 
     -- "Weapon Mode" on configSidebar
     local weaponModeText = configSidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    weaponModeText:SetPoint("TOP", configSidebar, "TOP", 0, -360)
+    weaponModeText:SetPoint("TOP", configSidebar, "TOP", 0, -365)
     weaponModeText:SetText("Weapon Mode")
     AttachHeaderTooltip(weaponModeText, configSidebar,
         "Weapon Mode",
@@ -798,27 +804,27 @@ function DungeonAdvisorUI:Create()
 
 
     local radioGroup = {}
-    local r1 = CreateRadioButton(configSidebar, "2H Only", radioGroup, function(val)
+    weaponRadio2H = CreateRadioButton(configSidebar, "2H Only", radioGroup, function()
         ns.weaponMode = "2H"
         DungeonAdvisorUI:RefreshDungeonList()
     end)
-    local r2 = CreateRadioButton(configSidebar, "All", radioGroup, function(val)
+    weaponRadio1H = CreateRadioButton(configSidebar, "All", radioGroup, function()
         ns.weaponMode = "1H"
         DungeonAdvisorUI:RefreshDungeonList()
     end)
-    r1:SetPoint("TOPLEFT", 0, -370)
-    r2:SetPoint("TOPRIGHT", -20, -370)
+    weaponRadio2H:SetPoint("TOPLEFT", 0, -375)
+    weaponRadio1H:SetPoint("TOPRIGHT", -20, -375)
     if ns.playerUsing2H then
-        r1:SetChecked(true)
+        weaponRadio2H:SetChecked(true)
     else
-        r2:SetChecked(true)
+        weaponRadio1H:SetChecked(true)
     end
 
 
     -- difficultySidebar for difficulty buttons (separate vertical stack)
     difficultySidebar = CreateFrame("Frame", nil, f)
     difficultySidebar:SetSize(130, FRAME_HEIGHT - 60)  -- Width for buttons, height to fit
-    difficultySidebar:SetPoint("TOPLEFT", f, "TOPLEFT", 140, -30)
+    difficultySidebar:SetPoint("TOPLEFT", f, "TOPLEFT", 160, -30)
     -- Optional: Add a subtle background to the difficultySidebar
     local difficultySidebarBg = difficultySidebar:CreateTexture(nil, "BACKGROUND")
     difficultySidebarBg:SetAllPoints()
@@ -832,14 +838,22 @@ function DungeonAdvisorUI:Create()
     -- Add difficulty buttons to the configSidebar
     CreateDifficultyButtons(difficultySidebar)
 
-    -- Rescan button below spec name in configSidebar
+    -- Rescan button and Inspect button side-by-side at the top of configSidebar
     local scanBtn = CreateFrame("Button", nil, configSidebar, "UIPanelButtonTemplate")
-    scanBtn:SetSize(110, 22)
-    scanBtn:SetPoint("TOPLEFT", configSidebar, "TOPLEFT", 8, -0)
-    scanBtn:SetText("Rescan Gear")
+    scanBtn:SetSize(68, 22)
+    scanBtn:SetPoint("TOPLEFT", configSidebar, "TOPLEFT", 8, 0)
+    scanBtn:SetText("Myself")
     scanBtn:SetScript("OnClick", function()
-        DungeonAdvisorUI:Refresh()
+        DungeonAdvisor:ReturnToSelf()
         DungeonAdvisorUI:HideSpinner()
+    end)
+
+    local inspectBtn = CreateFrame("Button", nil, configSidebar, "UIPanelButtonTemplate")
+    inspectBtn:SetSize(68, 22)
+    inspectBtn:SetPoint("TOPLEFT", configSidebar, "TOPLEFT", 79, 0)
+    inspectBtn:SetText("Inspect")
+    inspectBtn:SetScript("OnClick", function()
+        DungeonAdvisor:InspectTarget()
     end)
 
     -- Detail panel (right side)
@@ -894,6 +908,7 @@ function DungeonAdvisorUI:Create()
 end
 
 local specString
+local inspectedBanner
 function DungeonAdvisorUI:UpdateSpecInfo()
     if not self.frame then return end
     if not specString then
@@ -901,10 +916,48 @@ function DungeonAdvisorUI:UpdateSpecInfo()
         specString:SetPoint("TOP", configSidebar, "TOP", 0, -26)
         specString:SetJustifyH("CENTER")
 
+        inspectedBanner = configSidebar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        inspectedBanner:SetPoint("TOP", specString, "BOTTOM", 0, -2)
+        inspectedBanner:SetJustifyH("CENTER")
+        inspectedBanner:SetWidth(140)
+
         CreateStatInputs(configSidebar)
     end
 
-    specString:SetText(string.format("%s %s", ns.state.selectedSpecName, ns.state.selectedClassName))
+    if ns.inspectedPlayerName then
+        specString:SetText("|cffFFD700Viewing:|r " .. ns.inspectedPlayerName)
+        inspectedBanner:SetText(string.format("(%s %s)", ns.state.selectedSpecName, ns.state.selectedClassName))
+        inspectedBanner:Show()
+        -- Reflect auto-detected tier slots; disable checkboxes (read-only during inspect)
+        local autoTiers = ns.effectiveIgnoreTiers or {}
+        for key, cb in pairs(tierCheckboxes) do
+            cb:SetChecked(autoTiers[key] or false)
+            cb:Disable()
+        end
+        -- Reflect inspected player's weapon mode; disable radio buttons
+        if weaponRadio2H and weaponRadio1H then
+            weaponRadio2H:SetChecked(ns.weaponMode == "2H")
+            weaponRadio1H:SetChecked(ns.weaponMode ~= "2H")
+            weaponRadio2H:Disable()
+            weaponRadio1H:Disable()
+        end
+    else
+        specString:SetText(string.format("%s %s", ns.state.selectedSpecName, ns.state.selectedClassName))
+        inspectedBanner:Hide()
+        -- Restore saved tier choices; re-enable checkboxes
+        local saved = DungeonAdvisorCharDB and DungeonAdvisorCharDB.ignoreTiers or {}
+        for key, cb in pairs(tierCheckboxes) do
+            cb:SetChecked(saved[key] or false)
+            cb:Enable()
+        end
+        -- Restore player's weapon mode selection; re-enable radio buttons
+        if weaponRadio2H and weaponRadio1H then
+            weaponRadio2H:SetChecked(ns.weaponMode == "2H")
+            weaponRadio1H:SetChecked(ns.weaponMode ~= "2H")
+            weaponRadio2H:Enable()
+            weaponRadio1H:Enable()
+        end
+    end
 
     local weights = ns:GetSpecWeights()
     for stat, box in pairs(statInputs) do
@@ -914,8 +967,10 @@ end
 
 function DungeonAdvisorUI:Refresh()
     self:Create()  -- ensure frame exists before rebuilding
-    DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear()
-    ns:DetectLootSpec()
+    if not ns.inspectedPlayerName then
+        DungeonAdvisor.playerGear = DungeonAdvisor:GetEquippedGear("player")
+        ns:DetectLootSpec()
+    end
     DungeonAdvisorUI:UpdateSpecInfo()
     --After loading loot spec, load loot DB to ensure it's for the correct spec. This also ensures the DB is loaded before we try to render anything.
     DungeonAdvisor:InitializeLootDB()
