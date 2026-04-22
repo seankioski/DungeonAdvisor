@@ -463,10 +463,10 @@ local function BuildDungeonRows(scrollChild, results)
             GameTooltip:AddLine("Efficiency Breakdown", 1, 1, 1)
             GameTooltip:AddLine(" ")
 
-            local densityScore = result.totalIlvlGain / result.dropCount * W_ILVL_DENSITY
-            local ilvlRateScore = result.upgradeCount / result.dropCount * W_UPGRADE_RATE
-            local statRateScore = result.statUpgradeCount / result.dropCount * W_STAT_QUALITY
-            local trackScore = result.trackUpgradeCount / result.dropCount * W_TRACK
+            local densityScore = result.totalIlvlGain / result.dropCount * ns.W_ILVL_DENSITY
+            local ilvlRateScore = result.upgradeCount / result.dropCount * ns.W_UPGRADE_RATE
+            local statRateScore = result.statUpgradeCount / result.dropCount * ns.W_STAT_QUALITY
+            local trackScore = result.trackUpgradeCount / result.dropCount * ns.W_TRACK
 
             -- Label the scores, to 2 deicmal places
             GameTooltip:AddDoubleLine("iLvls:", string.format("%.2f", densityScore + ilvlRateScore), 1,1,0.3, 1,1,0.3)

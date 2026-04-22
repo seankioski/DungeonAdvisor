@@ -387,6 +387,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
             local isTrackUpgrade = false
             local bestIlvlCurrent  = nil  -- weakest piece this beats on ilvl
             local worstTrackCurrent = nil  -- lowest track piece (for track comparison)
+            local bestStatCurrent = nil  -- reference piece that triggered stat upgrade
 
             for _, current in ipairs(currentPieces) do
                 local currentTrackOrder = current.track and ns.TRACK_ORDER[current.track] or 0
@@ -403,6 +404,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                 -- stat: beats any piece, but only if drop track is same or better
                 if dropRatio > currentRatio + 0.01 and dropTrackOrder >= currentTrackOrder and not ns:startsWith(current.key, "TRINKET") then
                     isStatUpgrade = true
+                    if not bestStatCurrent then bestStatCurrent = current end
                 end
 
                     -- track: find worst track piece
@@ -427,36 +429,39 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
             end
 
             if isIlvlUpgrade or isStatUpgrade or isTrackUpgrade then
-                -- use weakest ilvl piece as display reference, fall back to best track piece
-                local displayCurrent = bestIlvlCurrent or worstTrackCurrent
-                local ignoredSlot = ns:GetEffectiveIgnoreTiers()[displayCurrent.key]
-                local displayLabel = MULTI_SLOT_LABELS[slot] or displayCurrent.label
-                local gain = drop.ilvl - displayCurrent.ilvl
+                -- use weakest ilvl piece as display reference, fall back to track or stat piece
+                local displayCurrent = bestIlvlCurrent or worstTrackCurrent or bestStatCurrent
+                if displayCurrent then
+                    local ignoredSlot = ns:GetEffectiveIgnoreTiers()[displayCurrent.key]
+                    local displayLabel = MULTI_SLOT_LABELS[slot] or displayCurrent.label
+                    local gain = drop.ilvl - displayCurrent.ilvl
 
-                if isIlvlUpgrade then upgradeCount = upgradeCount + 1 end
-                if isStatUpgrade  and not ignoredSlot then statUpgradeCount  = statUpgradeCount  + 1 end
-                if isTrackUpgrade then trackUpgradeCount = trackUpgradeCount + 1 end
+                    if isIlvlUpgrade then upgradeCount = upgradeCount + 1 end
+                    if isStatUpgrade  and not ignoredSlot then statUpgradeCount  = statUpgradeCount  + 1 end
+                    if isTrackUpgrade then trackUpgradeCount = trackUpgradeCount + 1 end
 
-                local targetList = isIlvlUpgrade and upgradeDetails or statOnlyUpgrades
-                table.insert(targetList, {
-                    slot          = displayCurrent.key,
-                    label         = displayLabel,
-                    itemName      = drop.name,
-                    itemLink      = drop.itemLink,
-                    currentIlvl   = displayCurrent.ilvl,
-                    dropIlvl      = drop.ilvl,
-                    gain          = isIlvlUpgrade and gain or 0,
-                    stats         = dropStats,
-                    currentStats  = displayCurrent.stats,
-                    secondaryStatScore        = ns:SecondaryStatScore(dropStats, weights),
-                    currentSecondaryStatScore = displayCurrent.secondaryStatScore,
-                    dropTrack     = dropTrack,
-                    currentTrack  = worstTrackCurrent and worstTrackCurrent.track or nil,
-                    isTrackUpgrade = isTrackUpgrade,
-                    isStatUpgrade  = isStatUpgrade,
-                    fromClient    = true,
-                })
+                    local targetList = isIlvlUpgrade and upgradeDetails or statOnlyUpgrades
+                    table.insert(targetList, {
+                        slot          = displayCurrent.key,
+                        label         = displayLabel,
+                        itemName      = drop.name,
+                        itemLink      = drop.itemLink,
+                        currentIlvl   = displayCurrent.ilvl,
+                        dropIlvl      = drop.ilvl,
+                        gain          = isIlvlUpgrade and gain or 0,
+                        stats         = dropStats,
+                        currentStats  = displayCurrent.stats,
+                        secondaryStatScore        = ns:SecondaryStatScore(dropStats, weights),
+                        currentSecondaryStatScore = displayCurrent.secondaryStatScore,
+                        dropTrack     = dropTrack,
+                        currentTrack  = worstTrackCurrent and worstTrackCurrent.track or nil,
+                        isTrackUpgrade = isTrackUpgrade,
+                        isStatUpgrade  = isStatUpgrade,
+                        fromClient    = true,
+                    })
+                end
             end
+
         end
     end
 
