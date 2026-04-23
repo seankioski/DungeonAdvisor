@@ -562,10 +562,24 @@ function DungeonAdvisorCalc:RankDungeons()
         --print(string.format("[DungeonAdvisor] %s: found %d drops for %s", selectedDiff, #drops, dungeonEntry.name or "unknown"))
         if #drops > 0 then
             local upgradeCount, totalIlvlGain, upgradeDetails, statUpgradeCount, statOnlyUpgrades, trackUpgradeCount = self:CalculateDungeonScore(drops, playerGear)
-            local ilvlDensity  = totalIlvlGain / #drops * ns.W_ILVL_DENSITY
-            local upgradeRate  = upgradeCount / #drops * ns.W_UPGRADE_RATE
-            local statQuality  = statUpgradeCount / #drops * ns.W_STAT_QUALITY
-            local trackQuality = trackUpgradeCount / #drops * ns.W_TRACK
+            -- Voidcore: everything drops at Myth 1/6, so stat quality dominates;
+            -- ilvl gains are marginally useful, track upgrades are irrelevant.
+            local wIlvlDensity, wUpgradeRate, wStatQuality, wTrack
+            if selectedDiff == "Voidcore" then
+                wIlvlDensity = 0.05
+                wUpgradeRate = 1
+                wStatQuality = 12
+                wTrack       = 1
+            else
+                wIlvlDensity = ns.W_ILVL_DENSITY
+                wUpgradeRate = ns.W_UPGRADE_RATE
+                wStatQuality = ns.W_STAT_QUALITY
+                wTrack       = ns.W_TRACK
+            end
+            local ilvlDensity  = totalIlvlGain / #drops * wIlvlDensity
+            local upgradeRate  = upgradeCount / #drops * wUpgradeRate
+            local statQuality  = statUpgradeCount / #drops * wStatQuality
+            local trackQuality = trackUpgradeCount / #drops * wTrack
             local efficiency   = ilvlDensity + upgradeRate + statQuality + trackQuality
 
             table.insert(results, {

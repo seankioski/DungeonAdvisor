@@ -107,6 +107,8 @@ ns.DIFFICULTIES = {
           lootTrack = "HERO", lootBonusID = "HERO_2" },
         { id = "M+10", name = "M10", fullName = "Mythic+ 10-12", color = "PURPLE", mythicPlus = true,
           lootTrack = "HERO", lootBonusID = "HERO_3" },
+        { id = "Voidcore", name = "VC", fullName = "Voidcore", color = "ORANGE", mythicPlus = true,
+          lootTrack = "MYTH", lootBonusID = "MYTH_1", voidcore = true },
     },
 }
 
