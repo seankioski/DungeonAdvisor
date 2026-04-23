@@ -26,7 +26,7 @@ end
 -- Initializes the addon and reads character gear via WoW API
 
 DungeonAdvisor = {}
-DungeonAdvisor.version = "1.0.8"
+DungeonAdvisor.version = "1.0.9"
 DungeonAdvisorLootDB = {} -- Global loot database (populated at PLAYER_LOGIN)
 
 -- Tuneable weights

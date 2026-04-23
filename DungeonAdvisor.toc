@@ -2,7 +2,7 @@
 ## Title: DungeonAdvisor
 ## Notes: Finds the best Mythic+ dungeons to run for gear upgrades
 ## Author: Helper
-## Version: 1.0.8
+## Version: 1.0.9
 ## SavedVariables: DungeonAdvisorDB
 ## SavedVariablesPerCharacter: DungeonAdvisorCharDB
 
