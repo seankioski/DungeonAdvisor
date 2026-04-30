@@ -346,6 +346,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
             --print("Gear score: " .. playerGear[gearKey].secondaryStatScore)
             table.insert(currentPieces, {
                 key                = gearKey,
+                itemID             = current and current.itemID or nil,
                 ilvl               = current and current.ilvl or 0,
                 label              = current and current.label or gearKey,
                 secondaryStatScore = current and current.secondaryStatScore or 0,
@@ -364,10 +365,24 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
         for _, current in ipairs(currentPieces) do
             for dropIdx, drop in ipairs(drops) do
                 if not usedDrops[dropIdx] then
-                    local gain = drop.ilvl - current.ilvl
-                    if gain >= MIN_UPGRADE_DELTA then
-                        totalIlvlGain  = totalIlvlGain + gain
-                        usedDrops[dropIdx] = true
+                    -- For multi-slot items: if this drop is the same item as another equipped
+                    -- piece, only score it against the slot that actually holds that item.
+                    local matchingCurrent = nil
+                    if maxCount > 1 and drop.itemID then
+                        for _, cp in ipairs(currentPieces) do
+                            if cp.itemID and cp.itemID == drop.itemID then
+                                matchingCurrent = cp
+                                break
+                            end
+                        end
+                    end
+                    local compareAgainst = matchingCurrent or current
+                    if compareAgainst == current then
+                        local gain = drop.ilvl - current.ilvl
+                        if gain >= MIN_UPGRADE_DELTA then
+                            totalIlvlGain  = totalIlvlGain + gain
+                            usedDrops[dropIdx] = true
+                        end
                     end
                     break
                 end
@@ -377,6 +392,20 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
         -- Find everything that is either an ilvl upgrade, a stat upgrade, or a track upgrade
         -- Track how many of each upgrade happens here
         for _, drop in ipairs(drops) do
+            -- For multi-slot items: if this drop is the same item as an equipped piece,
+            -- only compare it against that specific slot — not the other ring/trinket slot.
+            local matchingCurrent = nil
+            if maxCount > 1 and drop.itemID then
+                for _, cp in ipairs(currentPieces) do
+                    if cp.itemID and cp.itemID == drop.itemID then
+                        matchingCurrent = cp
+                        break
+                    end
+                end
+            end
+            -- piecesToCompare: if a matching slot exists, restrict to that slot only.
+            local piecesToCompare = matchingCurrent and {matchingCurrent} or currentPieces
+
             local dropStats = ns.GetItemStatsCompat(drop.itemLink)
             local dropTrack = ns:GetTrackFromItemLink(drop.itemLink) or drop.track
             local dropTrackOrder = dropTrack and ns.TRACK_ORDER[dropTrack] or 0
@@ -389,7 +418,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
             local worstTrackCurrent = nil  -- lowest track piece (for track comparison)
             local bestStatCurrent = nil  -- reference piece that triggered stat upgrade
 
-            for _, current in ipairs(currentPieces) do
+            for _, current in ipairs(piecesToCompare) do
                 local currentTrackOrder = current.track and ns.TRACK_ORDER[current.track] or 0
                 local currentRatio = ns:StatRatioScore(current.stats)
 
@@ -407,7 +436,7 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                     if not bestStatCurrent then bestStatCurrent = current end
                 end
 
-                    -- track: find worst track piece
+                -- track: find worst track piece
                 if not current.isCrafted then
                     if not worstTrackCurrent then
                         worstTrackCurrent = current
@@ -461,7 +490,6 @@ function DungeonAdvisorCalc:CalculateDungeonScore(dungeonDrops, playerGear)
                     })
                 end
             end
-
         end
     end
 

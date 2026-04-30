@@ -136,6 +136,16 @@ end
 ns.playerUsing2H = false
 ns.weaponMode = ""
 
+-- Defined here (before BuildGearEntry) so it is available regardless of Calculator.lua load state
+function ns:SecondaryStatScore(stats, weights)
+    if not stats or not weights then return 0 end
+    return
+        (stats["ITEM_MOD_CRIT_RATING_SHORT"] or 0)    * (weights.crit or 0) +
+        (stats["ITEM_MOD_HASTE_RATING_SHORT"] or 0)   * (weights.haste or 0) +
+        (stats["ITEM_MOD_MASTERY_RATING_SHORT"] or 0) * (weights.mastery or 0) +
+        (stats["ITEM_MOD_VERSATILITY"] or 0)          * (weights.versatility or 0)
+end
+
 local function BuildGearEntry(itemLink, label, weights)
     local itemName = GetItemInfo(itemLink)
     -- GetDetailedItemLevelInfo computes the effective ilvl from the bonus IDs
@@ -144,8 +154,10 @@ local function BuildGearEntry(itemLink, label, weights)
     -- rather than the track-upgraded ilvl (e.g. 636).
     local ilvl = GetDetailedItemLevelInfo(itemLink) or 0
     local stats = ns.GetItemStatsCompat(itemLink)
+    local itemID = tonumber(itemLink:match("item:(%d+)"))
     return {
         ilvl               = ilvl,
+        itemID             = itemID,
         name               = itemName or "Unknown",
         label              = label,
         secondaryStatScore = ns:SecondaryStatScore(stats, weights),
